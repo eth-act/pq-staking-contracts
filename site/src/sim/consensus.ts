@@ -29,6 +29,11 @@ export interface StakePosition {
 
 export interface ClEvent {
   outcome: 'accepted' | 'ignored' | 'info'
+  /** Stake the event is about, when known. */
+  stakeId?: bigint
+  /** What was processed, e.g. "Validator registration". */
+  subject: string
+  /** Short outcome, e.g. "invalid PQ signature; stake kept". */
   text: string
 }
 
@@ -77,8 +82,8 @@ export class Consensus {
    */
   processBlock(block: number, input: BlockInput, payOut: (address: Hex, gwei: bigint) => void): ClEvent[] {
     const events: ClEvent[] = []
-    const accept = (text: string) => events.push({ outcome: 'accepted', text })
-    const ignore = (text: string) => events.push({ outcome: 'ignored', text })
+    const emit = (outcome: ClEvent['outcome'], stakeId: bigint | undefined, subject: string, text: string) =>
+      events.push({ outcome, stakeId, subject, text })
 
     for (const c of input.created) {
       this.stakes.set(c.stakeId, {
@@ -89,96 +94,99 @@ export class Consensus {
         status: 'unregistered',
         migrated: false,
       })
-      accept(`Stake ${c.stakeId} created with ${eth(c.amountGwei)}`)
+      emit('accepted', c.stakeId, 'Stake', `created with ${eth(c.amountGwei)}`)
     }
 
     for (const t of input.topUps) {
       const stake = this.stakes.get(t.stakeId)
       if (!stake) {
-        ignore(`Top-up to unknown stake ${t.stakeId}`)
+        emit('ignored', t.stakeId, 'Top-up', 'unknown stake')
         continue
       }
       stake.balanceGwei += t.amountGwei
-      accept(`Stake ${t.stakeId} topped up by ${eth(t.amountGwei)} (${stake.status})`)
+      emit('accepted', t.stakeId, 'Top-up', `+${eth(t.amountGwei)}`)
     }
 
     for (const { role, request } of input.registrations) {
       const id = request.stakeId
       const stake = this.stakes.get(id)
-      const label = `${role} registration for stake ${id}`
-      if (!stake) ignore(`${label}: no such stake`)
-      else if (stake.status !== 'unregistered') ignore(`${label}: stake is ${stake.status}`)
+      const subject = role === 'validator' ? 'Validator registration' : 'Builder registration'
+      const reject = (text: string) => emit('ignored', id, subject, text)
+      if (!stake) reject('no such stake')
+      else if (stake.status !== 'unregistered') reject(`stake is ${stake.status}`)
       else if (authorizationCommitment(request.blsPubkey, request.pqPubkey) !== stake.authorizationCommitment) {
-        ignore(`${label}: keys do not open the authorization commitment; stake kept`)
+        reject('keys do not match the commitment; stake kept')
       } else if (this.usedCredentials.has(request.blsPubkey) || this.usedCredentials.has(request.pqPubkey)) {
-        ignore(`${label}: credential already used`)
+        reject('credential already used')
       } else if (request.blsSignature !== mockSignature('bls', id, request.blsPubkey, 96)) {
-        ignore(`${label}: invalid BLS signature; stake kept`)
+        reject('invalid BLS signature; stake kept')
       } else if (request.pqSignature !== mockSignature('pq', id, request.pqPubkey, size(request.pqSignature))) {
-        ignore(`${label}: invalid PQ signature; stake kept`)
+        reject('invalid PQ signature; stake kept')
       } else {
         this.usedCredentials.add(request.blsPubkey)
         this.usedCredentials.add(request.pqPubkey)
         stake.status = 'pending'
         stake.role = role
         stake.readyAtBlock = block + ACTIVATION_DELAY_BLOCKS
-        accept(`${label}: both signatures valid, queued for activation`)
+        emit('accepted', id, subject, 'both signatures valid, pending activation')
       }
     }
 
     for (const w of input.withdrawals) {
       const stake = this.stakes.get(w.stakeId)
-      const label = `Withdrawal for stake ${w.stakeId}`
+      const subject = w.amountGwei === 0n ? 'Exit / recovery' : 'Withdrawal'
+      const reject = (text: string) => emit('ignored', w.stakeId, subject, text)
       if (!stake) {
-        ignore(`${label}: no such stake`)
+        reject('no such stake')
         continue
       }
       if (withdrawalAddressOf(stake.withdrawalCredentials).toLowerCase() !== w.sourceAddress.toLowerCase()) {
-        ignore(`${label}: sender is not the withdrawal address`)
+        reject('sender is not the withdrawal address')
         continue
       }
       if (stake.status === 'active') {
         if (w.amountGwei === 0n) {
           stake.status = 'exiting'
           stake.readyAtBlock = block + EXIT_DELAY_BLOCKS
-          accept(`${label}: full exit started`)
+          emit('accepted', w.stakeId, 'Exit', 'started')
         } else {
           const available = stake.balanceGwei - MIN_BALANCE_GWEI[stake.role ?? 'validator']
           const amount = w.amountGwei < available ? w.amountGwei : available
           if (amount <= 0n) {
-            ignore(`${label}: nothing above the minimum balance`)
+            reject('nothing above the minimum balance')
           } else {
             stake.balanceGwei -= amount
             payOut(withdrawalAddressOf(stake.withdrawalCredentials), amount)
-            accept(`${label}: partial withdrawal of ${eth(amount)} paid`)
+            emit('accepted', w.stakeId, 'Withdrawal', `${eth(amount)} paid`)
           }
         }
       } else if (stake.status === 'unregistered') {
-        if (w.amountGwei !== 0n) ignore(`${label}: unregistered stake, only full recovery (amount 0) is allowed`)
-        else if (this.recoveryQueue.length >= PENDING_RECOVERY_LIMIT) ignore(`${label}: recovery queue full`)
+        if (w.amountGwei !== 0n) reject('unregistered: only full recovery (amount 0)')
+        else if (this.recoveryQueue.length >= PENDING_RECOVERY_LIMIT) reject('recovery queue full')
         else {
           stake.status = 'recovering'
           this.recoveryQueue.push(stake.stakeId)
-          accept(`${label}: unregistered, recovery of the full balance queued`)
+          emit('accepted', w.stakeId, 'Recovery', 'unregistered, full balance queued for recovery')
         }
       } else {
-        ignore(`${label}: stake is ${stake.status}`)
+        reject(`stake is ${stake.status}`)
       }
     }
 
     for (const c of input.consolidations) {
       const source = this.stakes.get(c.sourceStakeId)
       const target = this.stakes.get(c.targetStakeId)
-      const label = `Consolidation ${c.sourceStakeId} → ${c.targetStakeId}`
-      if (!source || !target) ignore(`${label}: unknown stake`)
-      else if (source === target) ignore(`${label}: source and target are the same`)
-      else if (source.status !== 'active' || target.status !== 'active') {
-        ignore(`${label}: both stakes must be active validators`)
-      } else if (withdrawalAddressOf(source.withdrawalCredentials).toLowerCase() !== c.sourceAddress.toLowerCase()) {
-        ignore(`${label}: sender is not the source withdrawal address`)
+      const subject = `Consolidation into #${c.targetStakeId}`
+      const reject = (text: string) => emit('ignored', c.sourceStakeId, subject, text)
+      if (!source || !target) reject('unknown stake')
+      else if (source === target) reject('source and target are the same')
+      else if (source.status !== 'active' || target.status !== 'active') reject('both must be active validators')
+      else if (withdrawalAddressOf(source.withdrawalCredentials).toLowerCase() !== c.sourceAddress.toLowerCase()) {
+        reject('sender is not the source withdrawal address')
       } else {
         target.balanceGwei += source.balanceGwei
-        accept(`${label}: moved ${eth(source.balanceGwei)}`)
+        emit('accepted', c.sourceStakeId, subject, `moved ${eth(source.balanceGwei)}`)
+        emit('accepted', c.targetStakeId, `Consolidation from #${c.sourceStakeId}`, `+${eth(source.balanceGwei)}`)
         source.balanceGwei = 0n
         source.status = 'exited'
       }
@@ -187,15 +195,15 @@ export class Consensus {
     for (const stake of this.stakes.values()) {
       if (stake.status === 'pending' && block >= (stake.readyAtBlock ?? 0)) {
         if (stake.balanceGwei < MIN_BALANCE_GWEI[stake.role ?? 'validator']) {
-          events.push({ outcome: 'info', text: `Stake ${stake.stakeId} waits for a top-up to activate` })
+          emit('info', stake.stakeId, 'Activation', 'waiting for a top-up')
         } else {
           stake.status = 'active'
           stake.validatorIndex = this.nextValidatorIndex++
-          accept(`Stake ${stake.stakeId} active as ${stake.role} index ${stake.validatorIndex}`)
+          emit('accepted', stake.stakeId, 'Activation', `active as ${stake.role} #${stake.validatorIndex}`)
         }
       } else if (stake.status === 'exiting' && block >= (stake.readyAtBlock ?? 0)) {
         payOut(withdrawalAddressOf(stake.withdrawalCredentials), stake.balanceGwei)
-        accept(`Stake ${stake.stakeId} exited, ${eth(stake.balanceGwei)} paid`)
+        emit('accepted', stake.stakeId, 'Exit', `complete, ${eth(stake.balanceGwei)} paid`)
         stake.balanceGwei = 0n
         stake.status = 'exited'
       }
@@ -204,7 +212,7 @@ export class Consensus {
     for (const id of this.recoveryQueue.splice(0, MAX_RECOVERIES_PER_BLOCK)) {
       const stake = this.stakes.get(id)!
       payOut(withdrawalAddressOf(stake.withdrawalCredentials), stake.balanceGwei)
-      accept(`Stake ${id} recovered, ${eth(stake.balanceGwei)} paid; stake ID and commitment kept`)
+      emit('accepted', id, 'Recovery', `${eth(stake.balanceGwei)} paid; stake ID and commitment kept`)
       stake.balanceGwei = 0n
       stake.status = 'unregistered'
     }

@@ -1,46 +1,36 @@
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { type Hex, formatEther } from 'viem'
-import { type QueueState, SYSTEM_CONTRACTS, type SystemContract, compiler } from './chain/chain'
+import { compiler } from './chain/chain'
 import { ACTORS, MIGRATED_VALIDATORS, Simulation } from './sim/simulation'
-import {
-  ConsolidationSection,
-  RegisterSection,
-  StakeSection,
-  TopUpSection,
-  WithdrawalSection,
-} from './ui/operations'
-import { ActivityPanel, BlocksPanel, QueuesPanel, StakesPanel } from './ui/panels'
+import { ChainView, type Selection } from './ui/ChainView'
+import { Dock } from './ui/Dock'
+import { Drawer } from './ui/Drawer'
+import { QueueLane, StakeLane } from './ui/Lanes'
+import { type View, buildView } from './ui/view'
 
-interface Snapshot {
-  balances: Record<Hex, bigint>
-  queues: Record<SystemContract, QueueState & { inhibited: boolean }>
-  fees: Record<SystemContract, bigint | undefined>
-}
-
-async function snapshot(sim: Simulation): Promise<Snapshot> {
-  const balances = {} as Snapshot['balances']
-  for (const a of ACTORS) balances[a.address] = await sim.chain.balance(a.address)
-  const queues = {} as Snapshot['queues']
-  const fees = {} as Snapshot['fees']
-  for (const name of SYSTEM_CONTRACTS) {
-    queues[name] = await sim.chain.queueState(name)
-    fees[name] = await sim.chain.fee(name)
-  }
-  return { balances, queues, fees }
+function pause(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  setTimeout(resolve, ms)
+  return promise
 }
 
 export function App() {
   const simRef = useRef<Simulation | null>(null)
-  const [state, setState] = useState<Snapshot | null>(null)
+  const [view, setView] = useState<View | null>(null)
   const [actorIndex, setActorIndex] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [sealing, setSealing] = useState(false)
+  const [selectedStake, setSelectedStake] = useState<bigint | undefined>(undefined)
+  const [selection, setSelection] = useState<Selection | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const reset = useCallback(async () => {
     setBusy(true)
-    simRef.current = await Simulation.create()
-    setState(await snapshot(simRef.current))
-    setMessage(null)
+    const sim = await Simulation.create()
+    simRef.current = sim
+    setView(await buildView(sim))
+    setSelection(null)
+    setSelectedStake(undefined)
     setBusy(false)
   }, [])
 
@@ -48,97 +38,86 @@ export function App() {
     void reset()
   }, [reset])
 
-  const run = useCallback((label: string, action: () => Promise<unknown>) => {
+  const send = useCallback((action: () => Promise<unknown>) => {
     const sim = simRef.current
     if (!sim) return
+    setError(null)
     setBusy(true)
     action()
-      .then(async () => {
-        const last = sim.activity[0]
-        setMessage(last && !last.result.ok ? `${label}: reverted` : label)
-        setState(await snapshot(sim))
-      })
-      .catch((e: unknown) => setMessage(`${label}: ${e instanceof Error ? e.message : String(e)}`))
+      .then(async () => setView(await buildView(sim)))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusy(false))
   }, [])
 
+  /** Seal the block, then show the EL side (queues drain), then the CL side (stakes update). */
+  const endBlock = useCallback(async () => {
+    const sim = simRef.current
+    if (!sim) return
+    setBusy(true)
+    setSealing(true)
+    await sim.nextBlock()
+    const next = await buildView(sim)
+    await pause(550)
+    setSealing(false)
+    setView((prev) => (prev ? { ...next, stakes: prev.stakes, events: [] } : next))
+    await pause(650)
+    setView(next)
+    setBusy(false)
+  }, [])
+
   const sim = simRef.current
-  if (!sim || !state) return <div className="loading">Deploying contracts into the in-browser EVM…</div>
+  if (!sim || !view) return <div className="loading">Deploying the contracts into an in-browser EVM…</div>
   const actor = ACTORS[actorIndex]
-  const ops = { sim, actor, fees: state.fees, run }
 
   return (
-    <div className={busy ? 'app busy' : 'app'}>
-      <header>
-        <h1>
-          New contract APIs with <em>StakeID</em>
-        </h1>
-        <p className="lede">
-          <s>Today: deposits, top-ups, withdrawals and consolidations all locate the validator by its BLS key.</s>{' '}
-          Below, the released contract bytecode runs in an EVM in your browser. The consensus layer is a simplified
-          model.
-        </p>
-        <p className="meta">
-          solc {compiler.solc.split('+')[0]} · EVM {compiler.evmVersion} · {MIGRATED_VALIDATORS} validators migrated
-          at the fork (stake IDs 0–{MIGRATED_VALIDATORS - 1})
-        </p>
-      </header>
-
-      <div className="controls">
-        <div className="block-no">
-          Block <strong>{sim.block}</strong>
-        </div>
-        <button
-          className="primary"
-          onClick={() => run(`Block ${sim.block} processed`, () => sim.nextBlock())}
-          disabled={busy}
-        >
-          End block ▸
-        </button>
-        <label>
-          acting as
-          <select value={actorIndex} onChange={(e) => setActorIndex(Number(e.target.value))}>
+    <LayoutGroup>
+      <div className="app">
+        <header className="top">
+          <div className="brand">
+            <h1>
+              Staking with <em>StakeID</em>
+            </h1>
+            <p>
+              Real contract bytecode (solc {compiler.solc.split('+')[0]}, {compiler.evmVersion}) running in your
+              browser · consensus layer simulated · {MIGRATED_VALIDATORS} validators migrated at the fork
+            </p>
+          </div>
+          <div className="actors">
             {ACTORS.map((a, i) => (
-              <option key={a.address} value={i}>
-                {a.name}
-              </option>
+              <button key={a.address} className={i === actorIndex ? 'actor on' : 'actor'} onClick={() => setActorIndex(i)}>
+                <span className="actor-name">{a.name}</span>
+                <motion.span key={view.balances[i].eth} className="actor-eth" initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
+                  {view.balances[i].eth} ETH
+                </motion.span>
+              </button>
             ))}
-          </select>
-        </label>
-        <div className="balances">
-          {ACTORS.map((a) => (
-            <span key={a.address}>
-              {a.name}: {Number(formatEther(state.balances[a.address])).toFixed(4)} ETH
-            </span>
-          ))}
+            <button className="ghost" onClick={() => void reset()} disabled={busy}>
+              Reset
+            </button>
+          </div>
+        </header>
+
+        <AnimatePresence>
+          {error && (
+            <motion.div className="error" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="stage">
+          <Dock sim={sim} actor={actor} stakes={view.stakes} selectedStake={selectedStake} send={send} />
+          <main>
+            <ChainView view={view} sealing={sealing} busy={busy} onEndBlock={() => void endBlock()} onSelect={setSelection} />
+            <QueueLane queues={view.queues} />
+            <StakeLane stakes={view.stakes} events={view.events} selected={selectedStake} onSelect={setSelectedStake} />
+          </main>
         </div>
-        <button onClick={() => void reset()} disabled={busy}>
-          Reset
-        </button>
       </div>
-      {message && <div className="message">{message}</div>}
 
-      <main>
-        <div className="ops">
-          <StakeSection {...ops} />
-          <TopUpSection {...ops} />
-          <RegisterSection {...ops} />
-          <ConsolidationSection {...ops} />
-          <WithdrawalSection {...ops} />
-        </div>
-        <div className="state">
-          <StakesPanel sim={sim} />
-          <QueuesPanel queues={state.queues} fees={state.fees} />
-          <BlocksPanel sim={sim} />
-          <ActivityPanel sim={sim} />
-        </div>
-      </main>
-
-      <footer>
-        Requests sit in the system contracts until <strong>End block</strong>, when each contract is called from{' '}
-        <code>0xff…fe</code> and returns the queued requests. Staking logs are read like today’s deposit logs.
-        Signatures are mock values the model can check; key sizes follow the chosen scheme.
-      </footer>
-    </div>
+      <AnimatePresence>
+        {selection && <Drawer key="drawer" sim={sim} selection={selection} onClose={() => setSelection(null)} />}
+      </AnimatePresence>
+    </LayoutGroup>
   )
 }

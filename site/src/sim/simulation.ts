@@ -52,7 +52,11 @@ export interface KeyBundle {
   pqScheme: PqScheme
 }
 
+export type TxKind = 'stake' | 'topup' | 'register' | 'withdraw' | 'consolidate'
+
 export interface Activity {
+  id: number
+  kind: TxKind
   block: number
   actor: string
   title: string
@@ -60,11 +64,20 @@ export interface Activity {
   calldata: Hex
   valueWei: bigint
   result: CallResult
+  stakeId?: bigint
+}
+
+/** A request waiting in a system contract's queue (mirrors the contract's storage queue). */
+export interface QueuedRequest {
+  txId: number
+  kind: TxKind
+  stakeId: bigint
 }
 
 export interface BlockReport {
   block: number
-  outputs: { contract: SystemContract; raw: Hex; decoded: unknown[] }[]
+  txIds: number[]
+  outputs: { contract: SystemContract; raw: Hex; decoded: unknown[]; dequeued: QueuedRequest[] }[]
   clEvents: ClEvent[]
 }
 
@@ -75,6 +88,13 @@ export class Simulation {
   readonly activity: Activity[] = []
   readonly blocks: BlockReport[] = []
   readonly keys = new Map<bigint, KeyBundle & { owner: Hex }>()
+  readonly queues: Record<SystemContract, QueuedRequest[]> = {
+    PQValidatorRegistration: [],
+    PQBuilderRegistration: [],
+    PQWithdrawal: [],
+    PQConsolidation: [],
+  }
+  private nextTxId = 1
 
   private constructor(
     readonly chain: Chain,
@@ -94,20 +114,49 @@ export class Simulation {
     return sim
   }
 
-  private async send(actor: Actor, title: string, contract: ContractName, calldata: Hex, valueWei: bigint) {
+  private async send(
+    actor: Actor,
+    kind: TxKind,
+    title: string,
+    contract: ContractName,
+    calldata: Hex,
+    valueWei: bigint,
+    stakeId?: bigint,
+  ): Promise<Activity> {
     const result = await this.chain.call(actor.address, this.chain.addresses[contract], calldata, valueWei)
-    this.activity.unshift({ block: this.block, actor: actor.name, title, contract, calldata, valueWei, result })
-    return result
+    const tx: Activity = {
+      id: this.nextTxId++,
+      kind,
+      block: this.block,
+      actor: actor.name,
+      title,
+      contract,
+      calldata,
+      valueWei,
+      result,
+      stakeId,
+    }
+    this.activity.unshift(tx)
+    return tx
   }
 
   /** System-contract request paying exactly the current fee. */
-  private async request(actor: Actor, title: string, contract: SystemContract, calldata: Hex) {
+  private async request(
+    actor: Actor,
+    kind: TxKind,
+    title: string,
+    contract: SystemContract,
+    calldata: Hex,
+    stakeId: bigint,
+  ): Promise<Activity> {
     const fee = await this.chain.fee(contract)
     if (fee === undefined) throw new Error(`${contract} is still inhibited`)
-    return this.send(actor, title, contract, calldata, fee)
+    const tx = await this.send(actor, kind, title, contract, calldata, fee, stakeId)
+    if (tx.result.ok) this.queues[contract].push({ txId: tx.id, kind, stakeId })
+    return tx
   }
 
-  async stake(actor: Actor, amountEth: string, pqScheme: PqScheme): Promise<bigint | undefined> {
+  async stake(actor: Actor, amountEth: string, pqScheme: PqScheme): Promise<Activity> {
     const keys: KeyBundle = {
       blsPubkey: randomHex(48),
       pqPubkey: randomHex(PQ_SCHEMES[pqScheme].pubkey),
@@ -119,16 +168,19 @@ export class Simulation {
       functionName: 'stake',
       args: [withdrawalCredentials(actor.address), commitment],
     })
-    const result = await this.send(actor, `stake ${amountEth} ETH`, 'PQStaking', calldata, parseEther(amountEth))
-    if (!result.ok) return undefined
-    const stakeId = decodeFunctionResult({ abi: stakingAbi, functionName: 'stake', data: result.returnValue }) as bigint
-    this.keys.set(stakeId, { ...keys, owner: actor.address })
-    return stakeId
+    const tx = await this.send(actor, 'stake', `Stake ${amountEth} ETH`, 'PQStaking', calldata, parseEther(amountEth))
+    if (tx.result.ok) {
+      const stakeId = decodeFunctionResult({ abi: stakingAbi, functionName: 'stake', data: tx.result.returnValue }) as bigint
+      tx.stakeId = stakeId
+      tx.title = `Stake ${amountEth} ETH → #${stakeId}`
+      this.keys.set(stakeId, { ...keys, owner: actor.address })
+    }
+    return tx
   }
 
-  async topUp(actor: Actor, stakeId: bigint, amountEth: string) {
+  async topUp(actor: Actor, stakeId: bigint, amountEth: string): Promise<Activity> {
     const calldata = encodeFunctionData({ abi: stakingAbi, functionName: 'topup', args: [stakeId] })
-    return this.send(actor, `top up stake ${stakeId} by ${amountEth} ETH`, 'PQStaking', calldata, parseEther(amountEth))
+    return this.send(actor, 'topup', `Top up #${stakeId} +${amountEth} ETH`, 'PQStaking', calldata, parseEther(amountEth), stakeId)
   }
 
   /** Registration with the stake's keys and mock signatures; flags tamper with them. */
@@ -137,7 +189,7 @@ export class Simulation {
     role: Role,
     stakeId: bigint,
     tamper: { wrongPqKey?: boolean; badPqSignature?: boolean } = {},
-  ) {
+  ): Promise<Activity> {
     const keys = this.keys.get(stakeId)
     if (!keys) throw new Error(`no keys for stake ${stakeId}`)
     const pqPubkey = tamper.wrongPqKey ? randomHex(PQ_SCHEMES[keys.pqScheme].pubkey) : keys.pqPubkey
@@ -151,20 +203,22 @@ export class Simulation {
       pqSignature,
     }
     const contract = role === 'validator' ? 'PQValidatorRegistration' : 'PQBuilderRegistration'
-    return this.request(actor, `register stake ${stakeId} as ${role}`, contract, encodeRegistration(fields))
+    return this.request(actor, 'register', `Register #${stakeId} as ${role}`, contract, encodeRegistration(fields), stakeId)
   }
 
-  async withdraw(actor: Actor, stakeId: bigint, amountGwei: bigint) {
-    const title = amountGwei === 0n ? `exit / recover stake ${stakeId}` : `withdraw ${amountGwei} gwei from stake ${stakeId}`
-    return this.request(actor, title, 'PQWithdrawal', encodeWithdrawal(stakeId, amountGwei))
+  async withdraw(actor: Actor, stakeId: bigint, amountGwei: bigint): Promise<Activity> {
+    const title = amountGwei === 0n ? `Exit / recover #${stakeId}` : `Withdraw ${Number(amountGwei) / 1e9} ETH from #${stakeId}`
+    return this.request(actor, 'withdraw', title, 'PQWithdrawal', encodeWithdrawal(stakeId, amountGwei), stakeId)
   }
 
-  async consolidate(actor: Actor, sourceStakeId: bigint, targetStakeId: bigint) {
+  async consolidate(actor: Actor, sourceStakeId: bigint, targetStakeId: bigint): Promise<Activity> {
     return this.request(
       actor,
-      `consolidate stake ${sourceStakeId} into ${targetStakeId}`,
+      'consolidate',
+      `Consolidate #${sourceStakeId} → #${targetStakeId}`,
       'PQConsolidation',
       encodeConsolidation(sourceStakeId, targetStakeId),
+      sourceStakeId,
     )
   }
 
@@ -176,10 +230,8 @@ export class Simulation {
     const input: BlockInput = { created: [], topUps: [], registrations: [], withdrawals: [], consolidations: [] }
 
     // `activity` is newest-first for display; the CL must see logs in execution order.
-    const stakingCalls = this.activity
-      .filter((a) => a.block === this.block && a.contract === 'PQStaking' && a.result.ok)
-      .reverse()
-    for (const a of stakingCalls) {
+    const blockTxs = this.activity.filter((a) => a.block === this.block).reverse()
+    for (const a of blockTxs.filter((a) => a.contract === 'PQStaking' && a.result.ok)) {
       for (const log of a.result.logs) {
         const event = decodeEventLog({ abi: stakingAbi, topics: log.topics as [Hex, ...Hex[]], data: log.data })
         const args = event.args as unknown as Record<string, unknown>
@@ -215,14 +267,14 @@ export class Simulation {
         decoded = requests
         input.registrations.push(...requests.map((request) => ({ role, request })))
       }
-      outputs.push({ contract, raw, decoded })
+      outputs.push({ contract, raw, decoded, dequeued: this.queues[contract].splice(0, decoded.length) })
     }
 
     const payouts: { address: Hex; gwei: bigint }[] = []
     const clEvents = this.consensus.processBlock(this.block, input, (address, gwei) => payouts.push({ address, gwei }))
     for (const { address, gwei } of payouts) await this.chain.credit(address, gwei * 1_000_000_000n)
 
-    const report = { block: this.block, outputs, clEvents }
+    const report: BlockReport = { block: this.block, txIds: blockTxs.map((t) => t.id), outputs, clEvents }
     this.blocks.unshift(report)
     this.block += 1
     return report

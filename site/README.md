@@ -27,13 +27,23 @@ exactly the bytecode a release from the same commit would ship.
 
 The chain starts with 3 migrated validators (stake IDs 0–2) so new stake IDs start at 3.
 
+## Using it
+
+Pick an actor at the top, open an operation on the left and press **Send**: the transaction
+lands in the current block, and requests to system contracts appear as tokens in their queue.
+**End block** seals the block, runs the system calls (up to the per-block maximum leaves each
+queue), then the consensus layer updates the stake cards. Click a stake card to use it in the
+open form; click a transaction or a sealed block to see its bytes.
+
 ## Layout
 
 - `src/chain/chain.ts`: EVM setup, deployment, raw calls, system calls, queue storage reads.
 - `src/chain/encoding.ts`: request calldata, system-call output decoders, credentials.
 - `src/sim/consensus.ts`: consensus-layer model.
 - `src/sim/simulation.ts`: actors and actions; `nextBlock()` runs the system calls and feeds the model.
-- `src/ui/`: operation forms, state panels, labeled byte views.
+- `src/ui/view.ts`: plain snapshots of the simulation for rendering.
+- `src/ui/Dock.tsx`, `ChainView.tsx`, `Lanes.tsx`, `Drawer.tsx`: actions, blocks, queues and
+  stakes, byte details. Animations use [motion](https://motion.dev).
 
 ## Deployment
 
