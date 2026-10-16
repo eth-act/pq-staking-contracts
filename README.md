@@ -1,1 +1,18 @@
 # pq-staking-contracts
+
+Staking and registration contracts for pq validators and builders.
+
+| Directory | Contents |
+| --- | --- |
+| [`contracts/`](contracts/) | Foundry project: contracts, tests, bytecode export. Released bytecode docs live here. |
+| [`site/`](site/) | Website explaining how the contracts work (not started). |
+
+## Releases
+
+Releases are managed by [release-please](https://github.com/googleapis/release-please) and
+cover `contracts/` only: commits that touch only `site/` do not produce a release.
+
+Commits on `main` must follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `feat!:` …). release-please keeps a release PR open with the next version
+and changelog; merging it tags the release (`vX.Y.Z`), after which CI compiles the contracts
+and attaches the bytecode assets described in [`contracts/README.md`](contracts/README.md).

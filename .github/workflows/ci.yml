@@ -1,0 +1,41 @@
+name: ci
+
+# No path filters: a required check skipped by a filter stays pending and blocks the PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Format
+        run: forge fmt --check
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Test
+        run: forge test -vvv
+
+      # Same step the release runs, so a broken export fails the PR, not the release.
+      - name: Export bytecode
+        run: ./scripts/export-bytecode.sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bytecode
+          path: contracts/dist/
