@@ -5,7 +5,7 @@ Staking and registration contracts for pq validators and builders.
 | Directory | Contents |
 | --- | --- |
 | [`contracts/`](contracts/) | Foundry project: contracts, tests, bytecode export. Released bytecode docs live here. |
-| [`site/`](site/) | Website explaining how the contracts work (not started). |
+| [`site/`](site/) | Interactive model: the contract bytecode running in an in-browser EVM, with a simulated consensus layer. Deployed to GitHub Pages from `main`. |
 
 ## Releases
 
