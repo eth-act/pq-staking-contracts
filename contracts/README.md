@@ -12,8 +12,8 @@ Foundry project for the pq staking contracts. Run all commands from this directo
 
 Validators and builders both create stake through `PQStaking`, then register their stake ID
 in the registration contract for their role. Registration carries two public keys, BLS
-(48 bytes, 96-byte signature) and post-quantum (sizes not fixed yet, each capped at 8192
-bytes), each with its own signature. The consensus layer verifies that the stake exists,
+(48-byte key, 96-byte signature) and post-quantum (32-byte key, 2400-byte signature), each
+with its own signature. The consensus layer verifies that the stake exists,
 checks the keys against the stake's authorization commitment, and verifies both signatures.
 
 Consolidations, partial withdrawals and exits are keyed by stake ID. The consensus layer
@@ -59,11 +59,12 @@ Input integers are big-endian, as in EIP-7002. Output integers are little-endian
 | --- | --- | --- | --- | --- |
 | `PQWithdrawal` | 16 bytes: `stake_id (u64) ++ amount_gwei (u64)` | `source_address (20) ++ calldata` | 36 bytes each: `source_address ++ stake_id (u64 LE) ++ amount_gwei (u64 LE)` | 2 / 16 |
 | `PQConsolidation` | 16 bytes: `source_stake_id (u64) ++ target_stake_id (u64)` | `source_address (20) ++ calldata` | 36 bytes each: `source_address ++ source_stake_id (u64 LE) ++ target_stake_id (u64 LE)` | 1 / 2 |
-| `PQValidatorRegistration`, `PQBuilderRegistration` | `stake_id (u64) ++ bls_pubkey (48) ++ bls_signature (96) ++ pq_pubkey_length (u16) ++ pq_pubkey ++ pq_signature` (rest of calldata); PQ fields 1-8192 bytes | calldata | SSZ `List[RegistrationRequest]`, `RegistrationRequest { stake_id: uint64, bls_pubkey: Bytes48, bls_signature: Bytes96, pq_pubkey: ByteList[8192], pq_signature: ByteList[8192] }` | 2 / 16 |
+| `PQValidatorRegistration`, `PQBuilderRegistration` | 2584 bytes: `stake_id (u64) ++ bls_pubkey (48) ++ bls_signature (96) ++ pq_pubkey (32) ++ pq_signature (2400)` | calldata | 2584 bytes each: the calldata with `stake_id` little-endian, i.e. SSZ `List[RegistrationRequest]` of the fixed-size `RegistrationRequest { stake_id: uint64, bls_pubkey: Bytes48, bls_signature: Bytes96, pq_pubkey: Bytes32, pq_signature: Bytes2400 }` | 2 / 16 |
 
 Withdrawal and consolidation parameters match EIP-7002 / EIP-7251. The registration
-parameters reuse the EIP-7002 values. With maximum-length PQ fields, a full registration
-dequeue uses about 18.6M of the 30M system-call gas limit.
+parameters reuse the EIP-7002 values. A full block of registrations (16) dequeues with about
+2.9M of the 30M system-call gas; queuing one registration costs about 1.9M gas the first
+time its storage slots are written.
 
 Example withdrawal request (full exit of stake 42) with `cast`:
 

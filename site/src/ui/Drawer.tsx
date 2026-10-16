@@ -1,8 +1,8 @@
 // Details on demand: labeled bytes of a transaction, or the system-call output of a block.
 import { motion } from 'motion/react'
-import { type Hex, size, slice } from 'viem'
+import { size, slice } from 'viem'
 import type { Simulation } from '../sim/simulation'
-import { RawHex, Segments, recordSegments, requestSegments } from './bytes'
+import { RECORD_LENGTH, RawHex, Segments, recordSegments, requestSegments } from './bytes'
 import type { Selection } from './ChainView'
 import { formatEth } from './view'
 
@@ -70,21 +70,23 @@ function BlockDetails({ sim, number }: { sim: Simulation; number: number }) {
         requests as bytes for the consensus layer.
       </p>
       {outputs.length === 0 && <p className="muted">No requests were dequeued.</p>}
-      {outputs.map((o) => (
-        <div key={o.contract}>
-          <h4>
-            {o.contract} · {size(o.raw)} bytes
-            {o.contract.endsWith('Registration') ? ' · SSZ list' : ` · ${size(o.raw) / 36} × 36-byte records`}
-          </h4>
-          {o.contract === 'PQWithdrawal' || o.contract === 'PQConsolidation' ? (
-            Array.from({ length: size(o.raw) / 36 }, (_, i) => (
-              <Segments key={i} segments={recordSegments(o.contract as 'PQWithdrawal' | 'PQConsolidation', slice(o.raw, 36 * i, 36 * i + 36) as Hex)} />
-            ))
-          ) : (
-            <RawHex hex={o.raw} />
-          )}
-        </div>
-      ))}
+      {outputs.map((o) => {
+        const recordLength = RECORD_LENGTH[o.contract]
+        const count = size(o.raw) / recordLength
+        return (
+          <div key={o.contract}>
+            <h4>
+              {o.contract} · {count} × {recordLength}-byte record{count === 1 ? '' : 's'}
+            </h4>
+            {Array.from({ length: count }, (_, i) => (
+              <Segments
+                key={i}
+                segments={recordSegments(o.contract, slice(o.raw, recordLength * i, recordLength * (i + 1)))}
+              />
+            ))}
+          </div>
+        )
+      })}
       <h4>Consensus layer</h4>
       <ul className="events">
         {report.clEvents.map((e, i) => (

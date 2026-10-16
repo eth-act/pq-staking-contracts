@@ -11,11 +11,8 @@ import {PQBuilderRegistration} from "../src/PQBuilderRegistration.sol";
 contract RegistrationTest is SystemCallTest {
     uint256 internal constant SYSTEM_CALL_GAS_LIMIT = 30_000_000;
     uint256 internal constant MAX_PER_BLOCK = 16;
-    uint256 internal constant MAX_PQ_LENGTH = 8192;
+    uint256 internal constant REQUEST_LENGTH = 2584; // 8 + 48 + 96 + 32 + 2400
     uint64 internal constant MAX_STAKE_ID = 2 ** 40 - 1;
-
-    bytes internal blsPubkey = new bytes(48);
-    bytes internal blsSignature = new bytes(96);
 
     address[2] internal registrations;
 
@@ -27,28 +24,18 @@ contract RegistrationTest is SystemCallTest {
         }
     }
 
-    function input(
-        uint64 stakeId,
-        bytes memory blsPk,
-        bytes memory blsSig,
-        bytes memory pqPk,
-        bytes memory pqSig
-    ) internal pure returns (bytes memory) {
-        return abi.encodePacked(stakeId, blsPk, blsSig, uint16(pqPk.length), pqPk, pqSig);
-    }
-
-    function input(uint64 stakeId, bytes memory pqPk, bytes memory pqSig)
-        internal
-        view
-        returns (bytes memory)
-    {
-        return input(stakeId, blsPubkey, blsSignature, pqPk, pqSig);
+    /// Request calldata with every field filled with byte `fill`.
+    function input(uint64 stakeId, bytes1 fill) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            stakeId, filled(fill, 48), filled(fill, 96), filled(fill, 32), filled(fill, 2400)
+        );
     }
 
     function test_RegistersAgainstStakeIdFromStaking() public {
         PQStaking staking = new PQStaking(0);
         uint64 stakeId = staking.stake{value: 32 ether}(bytes32(uint256(1)), bytes32(0));
-        bytes memory request = input(stakeId, hex"aabbccdd", hex"eeff");
+        bytes memory request = input(stakeId, 0xaa);
+        assertEq(request.length, REQUEST_LENGTH);
 
         for (uint256 i; i < 2; i++) {
             vm.recordLogs();
@@ -60,43 +47,28 @@ contract RegistrationTest is SystemCallTest {
         }
     }
 
-    /// Expected bytes from an independent Python SSZ serialization of
-    /// List[RegistrationRequest] with two entries of different PQ lengths.
-    function test_SystemCallReturnsSszList() public {
+    /// Output is fixed-size records: the calldata with stake_id little-endian.
+    function test_SystemCallReturnsRecordsWithLittleEndianStakeId() public {
         for (uint256 i; i < 2; i++) {
             address reg = registrations[i];
-            assertTrue(
-                submit(reg, input(7, filled(0xa1, 48), filled(0xb1, 96), hex"c1c2c3", hex"d1d2"))
-            );
-            assertTrue(
-                submit(
-                    reg,
-                    input(MAX_STAKE_ID, filled(0xa2, 48), filled(0xb2, 96), hex"c4", hex"d3d4d5d6")
-                )
-            );
+            assertTrue(submit(reg, input(0x0102030405, 0xa1)));
+            assertTrue(submit(reg, input(MAX_STAKE_ID, 0xa2)));
 
             bytes memory expected = bytes.concat(
-                hex"08000000ad000000",
-                hex"0700000000000000",
-                filled(0xa1, 48),
-                filled(0xb1, 96),
-                hex"a0000000a3000000c1c2c3d1d2",
+                hex"0504030201000000",
+                filled(0xa1, REQUEST_LENGTH - 8),
                 hex"ffffffffff000000",
-                filled(0xa2, 48),
-                filled(0xb2, 96),
-                hex"a0000000a1000000c4d3d4d5d6"
+                filled(0xa2, REQUEST_LENGTH - 8)
             );
             assertEq(systemCall(reg), expected);
         }
     }
 
-    /// Worst case: MAX_PER_BLOCK requests with maximum-length PQ fields, read from cold
-    /// storage, must fit the EIP-7002 system call gas limit.
-    function test_WorstCaseSystemCallFitsGasLimit() public {
+    /// Worst case: MAX_PER_BLOCK requests read from cold storage fit the system call gas limit.
+    function test_FullBlockSystemCallFitsGasLimit() public {
         address reg = registrations[0];
-        bytes memory request = input(0, filled(0x01, MAX_PQ_LENGTH), filled(0x02, MAX_PQ_LENGTH));
-        for (uint256 i; i <= MAX_PER_BLOCK; i++) {
-            assertTrue(submit(reg, request));
+        for (uint64 i; i <= MAX_PER_BLOCK; i++) {
+            assertTrue(submit(reg, input(i, 0x01)));
         }
         vm.cool(reg);
 
@@ -106,7 +78,7 @@ contract RegistrationTest is SystemCallTest {
         uint256 used = gasBefore - gasleft();
 
         assertTrue(ok);
-        assertEq(out.length, MAX_PER_BLOCK * (4 + 160 + 2 * MAX_PQ_LENGTH));
+        assertEq(out.length, MAX_PER_BLOCK * REQUEST_LENGTH);
         assertLt(used, SYSTEM_CALL_GAS_LIMIT);
     }
 
@@ -114,53 +86,29 @@ contract RegistrationTest is SystemCallTest {
         for (uint256 i; i < 2; i++) {
             address reg = registrations[i];
             for (uint64 j; j < 36; j++) {
-                assertTrue(submit(reg, input(j, hex"aa", hex"bb")));
+                assertTrue(submit(reg, input(j, 0x01)));
             }
             systemCall(reg);
             assertEq(feeOf(reg), 7); // excess = 36 - 2 = 34
         }
     }
 
-    function test_AcceptsBoundaryValues() public {
+    function test_StakeIdBoundary() public {
         for (uint256 i; i < 2; i++) {
-            assertTrue(
-                submit(
-                    registrations[i],
-                    input(MAX_STAKE_ID, new bytes(MAX_PQ_LENGTH), new bytes(MAX_PQ_LENGTH))
-                )
-            );
+            assertTrue(submit(registrations[i], input(MAX_STAKE_ID, 0x01)));
+            assertFalse(submit(registrations[i], input(MAX_STAKE_ID + 1, 0x01)));
         }
     }
 
-    function test_RevertWhen_StakeIdExceeds40Bits() public {
+    function test_RevertWhen_NotExactLength() public {
         for (uint256 i; i < 2; i++) {
-            assertFalse(submit(registrations[i], input(MAX_STAKE_ID + 1, hex"aa", hex"bb")));
-        }
-    }
-
-    /// Calldata shorter than stake_id + BLS fields + PQ length (154 bytes) is rejected.
-    function test_RevertWhen_TooShortForFixedFields() public {
-        for (uint256 i; i < 2; i++) {
-            (bool ok,) = registrations[i].call{value: 1}(new bytes(153));
-            assertFalse(ok);
-        }
-    }
-
-    function test_RevertWhen_PqFieldsEmptyOrTooLong() public {
-        for (uint256 i; i < 2; i++) {
-            address reg = registrations[i];
-            assertFalse(submit(reg, input(0, "", hex"bb")));
-            assertFalse(submit(reg, input(0, new bytes(MAX_PQ_LENGTH + 1), hex"bb")));
-            assertFalse(submit(reg, input(0, hex"aa", "")));
-            assertFalse(submit(reg, input(0, hex"aa", new bytes(MAX_PQ_LENGTH + 1))));
-        }
-    }
-
-    function test_RevertWhen_PqPubkeyLengthExceedsCalldata() public {
-        for (uint256 i; i < 2; i++) {
-            bytes memory request =
-                abi.encodePacked(uint64(0), blsPubkey, blsSignature, uint16(10), hex"aabbcc");
-            assertFalse(submit(registrations[i], request));
+            bytes memory request = input(0, 0x01);
+            bytes memory short = new bytes(REQUEST_LENGTH - 1);
+            for (uint256 b; b < short.length; b++) {
+                short[b] = request[b];
+            }
+            assertFalse(submit(registrations[i], short));
+            assertFalse(submit(registrations[i], bytes.concat(request, hex"00")));
         }
     }
 

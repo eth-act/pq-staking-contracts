@@ -1,6 +1,6 @@
 // Byte formats of the system contracts (see contracts/README.md). Request calldata uses
-// big-endian integers; system-call output uses little-endian (SSZ).
-import { type Hex, bytesToHex, concat, numberToHex, sha256, size, slice } from 'viem'
+// big-endian integers; system-call output uses little-endian.
+import { type Hex, bytesToHex, concat, numberToHex, sha256, slice } from 'viem'
 
 const u64be = (v: bigint) => numberToHex(v, { size: 8 })
 
@@ -18,6 +18,11 @@ export const encodeWithdrawal = (stakeId: bigint, amountGwei: bigint): Hex =>
 export const encodeConsolidation = (sourceStakeId: bigint, targetStakeId: bigint): Hex =>
   concat([u64be(sourceStakeId), u64be(targetStakeId)])
 
+/** Post-quantum key and signature sizes; a registration request is exactly 2584 bytes. */
+export const PQ_PUBKEY_LENGTH = 32
+export const PQ_SIGNATURE_LENGTH = 2400
+export const REGISTRATION_LENGTH = 8 + 48 + 96 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH
+
 export interface RegistrationFields {
   stakeId: bigint
   blsPubkey: Hex
@@ -27,14 +32,7 @@ export interface RegistrationFields {
 }
 
 export const encodeRegistration = (r: RegistrationFields): Hex =>
-  concat([
-    u64be(r.stakeId),
-    r.blsPubkey,
-    r.blsSignature,
-    numberToHex(size(r.pqPubkey), { size: 2 }),
-    r.pqPubkey,
-    r.pqSignature,
-  ])
+  concat([u64be(r.stakeId), r.blsPubkey, r.blsSignature, r.pqPubkey, r.pqSignature])
 
 // --- System call output ---------------------------------------------------------------------
 
@@ -74,24 +72,19 @@ export function decodeConsolidationRecords(out: Uint8Array): ConsolidationRecord
   return records
 }
 
-/** Decode SSZ `List[RegistrationRequest]` (variable-size elements: 4-byte offsets first). */
-export function decodeRegistrationSsz(out: Uint8Array): RegistrationFields[] {
-  if (out.length === 0) return []
-  const count = Number(readLe(out, 0, 4)) / 4
-  const starts = Array.from({ length: count }, (_, i) => Number(readLe(out, 4 * i, 4)))
-  return starts.map((start, i) => {
-    const end = i + 1 < count ? starts[i + 1] : out.length
-    const el = out.slice(start, end)
-    const pqPubkeyOffset = Number(readLe(el, 152, 4))
-    const pqSignatureOffset = Number(readLe(el, 156, 4))
-    return {
-      stakeId: readLe(el, 0, 8),
-      blsPubkey: bytesToHex(el.slice(8, 56)),
-      blsSignature: bytesToHex(el.slice(56, 152)),
-      pqPubkey: bytesToHex(el.slice(pqPubkeyOffset, pqSignatureOffset)),
-      pqSignature: bytesToHex(el.slice(pqSignatureOffset)),
-    }
-  })
+/** Decode fixed 2584-byte registration records (stake_id little-endian). */
+export function decodeRegistrationRecords(out: Uint8Array): RegistrationFields[] {
+  const records: RegistrationFields[] = []
+  for (let o = 0; o < out.length; o += REGISTRATION_LENGTH) {
+    records.push({
+      stakeId: readLe(out, o, 8),
+      blsPubkey: bytesToHex(out.slice(o + 8, o + 56)),
+      blsSignature: bytesToHex(out.slice(o + 56, o + 152)),
+      pqPubkey: bytesToHex(out.slice(o + 152, o + 152 + PQ_PUBKEY_LENGTH)),
+      pqSignature: bytesToHex(out.slice(o + 152 + PQ_PUBKEY_LENGTH, o + REGISTRATION_LENGTH)),
+    })
+  }
+  return records
 }
 
 // --- Credentials ----------------------------------------------------------------------------

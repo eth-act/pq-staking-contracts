@@ -10,10 +10,12 @@ import {
 } from 'viem'
 import { Chain, type CallResult, type ContractName, SYSTEM_CONTRACTS, type SystemContract, contracts } from '../chain/chain'
 import {
+  PQ_PUBKEY_LENGTH,
+  PQ_SIGNATURE_LENGTH,
   type RegistrationFields,
   authorizationCommitment,
   decodeConsolidationRecords,
-  decodeRegistrationSsz,
+  decodeRegistrationRecords,
   decodeWithdrawalRecords,
   encodeConsolidation,
   encodeRegistration,
@@ -38,18 +40,10 @@ export const ACTORS: Actor[] = [
 /** Validators that exist before the fork; they get stake IDs 0..N-1. */
 export const MIGRATED_VALIDATORS = 3
 
-export const PQ_SCHEMES = {
-  'ML-DSA-44': { pubkey: 1312, signature: 2420 },
-  'Falcon-512': { pubkey: 897, signature: 666 },
-  'Small (demo)': { pubkey: 32, signature: 64 },
-} as const
-export type PqScheme = keyof typeof PQ_SCHEMES
-
 /** Keys an actor generated when creating a stake; needed later to register it. */
 export interface KeyBundle {
   blsPubkey: Hex
   pqPubkey: Hex
-  pqScheme: PqScheme
 }
 
 export type TxKind = 'stake' | 'topup' | 'register' | 'withdraw' | 'consolidate'
@@ -156,12 +150,8 @@ export class Simulation {
     return tx
   }
 
-  async stake(actor: Actor, amountEth: string, pqScheme: PqScheme): Promise<Activity> {
-    const keys: KeyBundle = {
-      blsPubkey: randomHex(48),
-      pqPubkey: randomHex(PQ_SCHEMES[pqScheme].pubkey),
-      pqScheme,
-    }
+  async stake(actor: Actor, amountEth: string): Promise<Activity> {
+    const keys: KeyBundle = { blsPubkey: randomHex(48), pqPubkey: randomHex(PQ_PUBKEY_LENGTH) }
     const commitment = authorizationCommitment(keys.blsPubkey, keys.pqPubkey)
     const calldata = encodeFunctionData({
       abi: stakingAbi,
@@ -192,8 +182,8 @@ export class Simulation {
   ): Promise<Activity> {
     const keys = this.keys.get(stakeId)
     if (!keys) throw new Error(`no keys for stake ${stakeId}`)
-    const pqPubkey = tamper.wrongPqKey ? randomHex(PQ_SCHEMES[keys.pqScheme].pubkey) : keys.pqPubkey
-    let pqSignature = mockSignature('pq', stakeId, pqPubkey, PQ_SCHEMES[keys.pqScheme].signature)
+    const pqPubkey = tamper.wrongPqKey ? randomHex(PQ_PUBKEY_LENGTH) : keys.pqPubkey
+    let pqSignature = mockSignature('pq', stakeId, pqPubkey, PQ_SIGNATURE_LENGTH)
     if (tamper.badPqSignature) pqSignature = `0x${pqSignature.slice(2, -2)}00`
     const fields: RegistrationFields = {
       stakeId,
@@ -263,7 +253,7 @@ export class Simulation {
         input.consolidations.push(...records)
       } else {
         const role: Role = contract === 'PQValidatorRegistration' ? 'validator' : 'builder'
-        const requests = decodeRegistrationSsz(bytes)
+        const requests = decodeRegistrationRecords(bytes)
         decoded = requests
         input.registrations.push(...requests.map((request) => ({ role, request })))
       }

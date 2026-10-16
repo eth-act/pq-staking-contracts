@@ -2,7 +2,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react'
 import type { Role } from '../sim/consensus'
-import { type Actor, PQ_SCHEMES, type PqScheme, type Simulation, type TxKind } from '../sim/simulation'
+import type { Actor, Simulation, TxKind } from '../sim/simulation'
 import type { StakeView } from './view'
 
 export const KIND_COLOR: Record<TxKind, string> = {
@@ -24,7 +24,7 @@ interface DockProps {
 const TILES: { kind: TxKind; index: string; title: string; caption: string }[] = [
   { kind: 'stake', index: '01', title: 'Stake', caption: 'ETH + withdrawal credentials + key commitment → stake ID' },
   { kind: 'topup', index: '02', title: 'Top up', caption: 'topup(stake_id)' },
-  { kind: 'register', index: '03', title: 'Register', caption: 'BLS + PQ key, one signature each' },
+  { kind: 'register', index: '03', title: 'Register', caption: 'BLS key (48 B) + PQ key (32 B), one signature each (96 B, 2400 B)' },
   { kind: 'consolidate', index: '04', title: 'Consolidate', caption: 'source and target by stake ID' },
   { kind: 'withdraw', index: '05', title: 'Exit / withdraw', caption: 'amount 0 = everything' },
 ]
@@ -94,7 +94,6 @@ function StakePicker(props: {
 
 function Form({ kind, sim, actor, stakes, selectedStake, send }: DockProps & { kind: TxKind }) {
   const [amount, setAmount] = useState(kind === 'stake' ? '32' : kind === 'withdraw' ? '0' : '1')
-  const [scheme, setScheme] = useState<PqScheme>('ML-DSA-44')
   const [stakeId, setStakeId] = useState('')
   const [target, setTarget] = useState('')
   const [role, setRole] = useState<Role>('validator')
@@ -113,16 +112,7 @@ function Form({ kind, sim, actor, stakes, selectedStake, send }: DockProps & { k
         <Field label="amount (ETH)">
           <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
         </Field>
-        <Field label="PQ key sizes">
-          <select value={scheme} onChange={(e) => setScheme(e.target.value as PqScheme)}>
-            {Object.entries(PQ_SCHEMES).map(([name, s]) => (
-              <option key={name} value={name}>
-                {name} · {s.pubkey}B key · {s.signature}B sig
-              </option>
-            ))}
-          </select>
-        </Field>
-        <button className="send" onClick={() => send(() => sim.stake(actor, amount, scheme))}>
+        <button className="send" onClick={() => send(() => sim.stake(actor, amount))}>
           Send
         </button>
       </div>

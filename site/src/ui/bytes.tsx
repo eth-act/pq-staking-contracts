@@ -1,23 +1,31 @@
 // Labeled hex rendering: splits request calldata and system-call records into their fields.
 import { type Hex, size, slice } from 'viem'
-import type { ContractName } from '../chain/chain'
+import type { ContractName, SystemContract } from '../chain/chain'
+import { PQ_PUBKEY_LENGTH, PQ_SIGNATURE_LENGTH, REGISTRATION_LENGTH } from '../chain/encoding'
 
 export interface Segment {
   label: string
   hex: Hex
 }
 
-function cut(hex: Hex, fields: [label: string, length: number | 'rest'][]): Segment[] {
+function cut(hex: Hex, fields: [label: string, length: number][]): Segment[] {
   const segments: Segment[] = []
   let offset = 0
   for (const [label, length] of fields) {
-    const end = length === 'rest' ? size(hex) : offset + length
-    if (end > size(hex) || end <= offset) break
-    segments.push({ label, hex: slice(hex, offset, end) })
-    offset = end
+    if (offset + length > size(hex)) break
+    segments.push({ label, hex: slice(hex, offset, offset + length) })
+    offset += length
   }
   return segments
 }
+
+/** Registration fields after stake_id; same order in calldata and system-call records. */
+const REGISTRATION_FIELDS: [string, number][] = [
+  ['bls_pubkey', 48],
+  ['bls_signature', 96],
+  ['pq_pubkey', PQ_PUBKEY_LENGTH],
+  ['pq_signature', PQ_SIGNATURE_LENGTH],
+]
 
 /** Field layout of request calldata sent to `contract`, or `undefined` for ABI calls. */
 export function requestSegments(contract: ContractName, calldata: Hex): Segment[] | undefined {
@@ -26,24 +34,28 @@ export function requestSegments(contract: ContractName, calldata: Hex): Segment[
     return cut(calldata, [['source_stake_id (u64 BE)', 8], ['target_stake_id (u64 BE)', 8]])
   }
   if (contract === 'PQValidatorRegistration' || contract === 'PQBuilderRegistration') {
-    const pqLength = size(calldata) >= 154 ? Number(BigInt(slice(calldata, 152, 154))) : 0
-    return cut(calldata, [
-      ['stake_id (u64 BE)', 8],
-      ['bls_pubkey', 48],
-      ['bls_signature', 96],
-      ['pq_pubkey_length (u16 BE)', 2],
-      ['pq_pubkey', pqLength],
-      ['pq_signature', 'rest'],
-    ])
+    return cut(calldata, [['stake_id (u64 BE)', 8], ...REGISTRATION_FIELDS])
   }
   return undefined
 }
 
-/** Field layout of one 36-byte withdrawal or consolidation record from a system call. */
-export function recordSegments(contract: 'PQWithdrawal' | 'PQConsolidation', record: Hex): Segment[] {
-  return contract === 'PQWithdrawal'
-    ? cut(record, [['source_address', 20], ['stake_id (u64 LE)', 8], ['amount_gwei (u64 LE)', 8]])
-    : cut(record, [['source_address', 20], ['source_stake_id (u64 LE)', 8], ['target_stake_id (u64 LE)', 8]])
+/** Size of one record in a system contract's system-call output. */
+export const RECORD_LENGTH: Record<SystemContract, number> = {
+  PQWithdrawal: 36,
+  PQConsolidation: 36,
+  PQValidatorRegistration: REGISTRATION_LENGTH,
+  PQBuilderRegistration: REGISTRATION_LENGTH,
+}
+
+/** Field layout of one record returned by a system call. */
+export function recordSegments(contract: SystemContract, record: Hex): Segment[] {
+  if (contract === 'PQWithdrawal') {
+    return cut(record, [['source_address', 20], ['stake_id (u64 LE)', 8], ['amount_gwei (u64 LE)', 8]])
+  }
+  if (contract === 'PQConsolidation') {
+    return cut(record, [['source_address', 20], ['source_stake_id (u64 LE)', 8], ['target_stake_id (u64 LE)', 8]])
+  }
+  return cut(record, [['stake_id (u64 LE)', 8], ...REGISTRATION_FIELDS])
 }
 
 const PREVIEW_BYTES = 12

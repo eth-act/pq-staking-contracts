@@ -22,7 +22,7 @@ exactly the bytecode a release from the same commit would ship.
 | End of block | `SYSTEM_ADDRESS` calls to each system contract | Returned bytes are decoded and shown |
 | Staking logs | `CreateStake` / `TopUp` events, read like deposit logs today | |
 | Consensus layer | Model in `src/sim/consensus.ts` | Follows EIP-8413 and issue #1; delays, churn and balances simplified |
-| Keys and signatures | Random keys, mock signatures the model can check | Sizes follow the chosen PQ scheme |
+| Keys and signatures | Random keys, mock signatures the model can check | BLS 48 B key / 96 B signature; PQ 32 B key / 2400 B signature |
 | Authorization commitment | `0x01 ‖ sha256(bls_pubkey ‖ pq_pubkey)[1:]` | Demo assumption; EIP-8413 defines a BLS-only version |
 
 The chain starts with 3 migrated validators (stake IDs 0–2) so new stake IDs start at 3.
