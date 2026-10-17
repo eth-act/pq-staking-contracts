@@ -37,14 +37,22 @@ contract RegistrationFV is Test, SymTest {
         vm.store(q, bytes32(slot), bytes32(v));
     }
 
-    function symState(uint256 maxQueued) internal {
-        excess = svm.createUint256("excess");
+    uint256 internal constant ANY = type(uint256).max - 1;
+
+    /// INV state; `excessValue` concrete or ANY; tail - head fixed to `queued` (head symbolic).
+    function symState(uint256 excessValue, uint256 queued) internal {
+        if (excessValue == ANY) {
+            excess = svm.createUint256("excess");
+            vm.assume(excess == INHIB || excess < 2 ** 64);
+        } else {
+            excess = excessValue;
+        }
         count = svm.createUint256("count");
         head = svm.createUint256("head");
-        tail = svm.createUint256("tail");
-        vm.assume(head <= tail && tail < 2 ** 64 && tail - head <= maxQueued);
+        vm.assume(head < 2 ** 64);
+        tail = head + queued;
+        vm.assume(tail < 2 ** 64);
         vm.assume(count <= tail - head);
-        vm.assume(excess == INHIB || excess < 2 ** 64);
         if (excess == INHIB) vm.assume(count == 0 && head == 0 && tail == 0);
         st(0, excess);
         st(1, count);
@@ -104,29 +112,38 @@ contract RegistrationFV is Test, SymTest {
         }
     }
 
-    /// System call with up to 2 queued registrations: exact output bytes, queue/excess update.
-    function check_systemCall_upTo2() public {
-        symState(2);
-        uint256 n = tail - head;
+    /// System call with `queued` (<= 2) registrations: exact output bytes, queue/excess update.
+    function _systemCallExact(uint256 queued) internal {
+        symState(ANY, queued);
         bytes memory expected;
-        for (uint256 i; i < n; i++) {
+        for (uint256 i; i < queued; i++) {
             expected = bytes.concat(expected, record(entry(head + i)));
         }
         vm.prank(SYS);
         (bool ok, bytes memory ret) = q.call("");
         assert(ok);
         assert(eqWords(ret, expected));
-        assert(ld(2) == 0 && ld(3) == 0); // fully drained (n <= 16): reset
+        assert(ld(2) == 0 && ld(3) == 0); // fully drained: reset
         uint256 prev = excess == INHIB ? 0 : excess;
         assert(ld(0) == (prev + count > 2 ? prev + count - 2 : 0));
         assert(ld(1) == 0);
     }
 
+    function check_systemCall_q0() public { _systemCallExact(0); }
+    function check_systemCall_q1() public { _systemCallExact(1); }
+    function check_systemCall_q2() public { _systemCallExact(2); }
+
     /// Requests failing the length or stake-ID check revert with empty data and change nothing,
-    /// before the verifier runs (any value, any state, any sender).
+    /// before the verifier runs (any value, sender, queue state; excess 0, i.e. fee 1 wei).
     function _rejects(uint256 len, bool badStakeId) internal {
-        symState(type(uint256).max);
-        vm.assume(excess != INHIB && excess <= 11); // fee 1 wei; the inhibitor case is QueueFV's
+        symState(0, 0);
+        head = svm.createUint256("head2");
+        tail = svm.createUint256("tail2");
+        count = svm.createUint256("count2");
+        vm.assume(head <= tail && tail < 2 ** 64 && count <= tail - head);
+        st(1, count);
+        st(2, head);
+        st(3, tail);
         address sender = svm.createAddress("sender");
         vm.assume(sender != SYS && sender != q);
         uint256 value = svm.createUint(128, "value");

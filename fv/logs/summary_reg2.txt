@@ -1,0 +1,9 @@
+RegistrationFV [PASS] check_systemCall_q0() (paths: 3, time: 0.11s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_len1() (paths: 2, time: 0.15s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_len16() (paths: 2, time: 0.16s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_systemCall_q1() (paths: 2, time: 5.72s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_len2439() (paths: 2, time: 0.14s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_badStakeId() (paths: 2, time: 0.19s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_len2441() (paths: 2, time: 0.14s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_systemCall_q2() (paths: 2, time: 20.44s, bounds: []) incomplete_warnings=0
+RegistrationFV [ERROR] check_systemCall_q17_lengthAndHead() (paths: 1, time: 308.60s, bounds: []) incomplete_warnings=0

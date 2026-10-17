@@ -1,0 +1,10 @@
+RegistrationFV [ERROR] check_systemCall_upTo2() (paths: 9, time: 306.88s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_len1() (paths: 93, time: 704.64s, bounds: []) incomplete_warnings=1
+RegistrationFV [PASS] check_rejects_len16() (paths: 94, time: 732.88s, bounds: []) incomplete_warnings=1
+RegistrationFV [PASS] check_rejects_len2439() (paths: 94, time: 696.85s, bounds: []) incomplete_warnings=1
+StakingFV [PASS] check_stake(bytes32,bytes32,uint64,address) (paths: 15, time: 1.14s, bounds: []) incomplete_warnings=0
+StakingFV [PASS] check_topup(uint64,uint64,address) (paths: 21, time: 1.73s, bounds: []) incomplete_warnings=0
+StakingFV [PASS] check_isStake(uint64) (paths: 3, time: 0.08s, bounds: []) incomplete_warnings=0
+StakingFV [PASS] check_noOtherEntryPoint(bytes4,address) (paths: 4, time: 0.24s, bounds: []) incomplete_warnings=0
+RegistrationFV [PASS] check_rejects_len2441() (paths: 93, time: 660.53s, bounds: []) incomplete_warnings=1
+RegistrationFV [PASS] check_rejects_badStakeId() (paths: 92, time: 680.98s, bounds: []) incomplete_warnings=1

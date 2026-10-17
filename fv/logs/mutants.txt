@@ -1,0 +1,15 @@
+KILLED   stake-id bound off by one: WithdrawalFV.check_request_len16=FAIL
+KILLED   tail not reset when drained: WithdrawalFV.check_systemCall_q1=FAIL
+KILLED   inhibitor not cleared in excess update: WithdrawalFV.check_systemCall_q0=FAIL
+KILLED   dequeue max off by one: WithdrawalFV.check_systemCall_q17=FAIL, ConsolidationFV.check_systemCall_q3=FAIL
+KILLED   fee getter accepts value: WithdrawalFV.check_request_len0=FAIL
+KILLED   count not incremented: WithdrawalFV.check_request_len16=FAIL
+KILLED   le64 swap bug: WithdrawalFV.check_systemCall_q1=FAIL
+KILLED   consolidation target id unchecked: ConsolidationFV.check_request_len16=FAIL
+KILLED   withdrawal fields swapped in output: WithdrawalFV.check_systemCall_q1=FAIL
+KILLED   staking capacity off by one: StakingFV.check_stake=FAIL
+KILLED   isStake includes prefix end: StakingFV.check_isStake=FAIL, StakingFV.check_topup=FAIL
+KILLED   gwei multiple unchecked: StakingFV.check_stake=FAIL
+SURVIVED registration length check loosened: RegistrationFV.check_rejects_len2441=PASS
+KILLED   registration record keeps BE stake id: RegistrationFV.check_systemCall_q1=FAIL
+13/14 mutants killed

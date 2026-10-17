@@ -1,0 +1,419 @@
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 2.06s
+Compiler run successful!
+note[unsafe-cheatcode]: usage of unsafe cheatcodes that can perform dangerous operations
+  --> test/Registration.t.sol:25:19
+   |
+25 |         json = vm.readFile("test/vectors/leanxmss_k.json");
+   |                   ^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-cheatcode
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> test/Registration.t.sol:57:25
+   |
+57 |         assertEq(uint64(bytes8(request)), stakeId);
+   |                         ^^^^^^^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'bytes8' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/fv/StakingFV.t.sol:52:14
+   |
+52 |     function check_stake(bytes32 wc, bytes32 ac, uint64 k, address sender) public {
+   |              ^^^^^^^^^^^ help: consider using: `checkStake`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/fv/StakingFV.t.sol:80:14
+   |
+80 |     function check_topup(uint64 id, uint64 k, address sender) public {
+   |              ^^^^^^^^^^^ help: consider using: `checkTopup`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/StakingFV.t.sol:104:14
+    |
+104 |     function check_isStake(uint64 id) public {
+    |              ^^^^^^^^^^^^^ help: consider using: `checkIsStake`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/StakingFV.t.sol:111:14
+    |
+111 |     function check_noOtherEntryPoint(bytes4 sel, address sender) public {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkNoOtherEntryPoint`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> test/fv/StakingFV.t.sol:43:19
+   |
+43 |         initial = uint64(slot0);
+   |                   ^^^^^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'uint64' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> test/fv/StakingFV.t.sol:44:18
+   |
+44 |         events = uint64(slot0 >> 64);
+   |                  ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'uint64' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/RegistrationFV.t.sol:108:14
+    |
+108 |     function check_systemCall_upTo2() public {
+    |              ^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallUpTo2`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/RegistrationFV.t.sol:148:14
+    |
+148 |     function check_rejects_len1() public { _rejects(1, false); }
+    |              ^^^^^^^^^^^^^^^^^^ help: consider using: `checkRejectsLen1`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/RegistrationFV.t.sol:149:14
+    |
+149 |     function check_rejects_len16() public { _rejects(16, false); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRejectsLen16`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/RegistrationFV.t.sol:150:14
+    |
+150 |     function check_rejects_len2439() public { _rejects(2439, false); }
+    |              ^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRejectsLen2439`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/RegistrationFV.t.sol:151:14
+    |
+151 |     function check_rejects_len2441() public { _rejects(2441, false); }
+    |              ^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRejectsLen2441`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/RegistrationFV.t.sol:152:14
+    |
+152 |     function check_rejects_badStakeId() public { _rejects(2440, true); }
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRejectsBadStakeId`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:178:14
+    |
+178 |     function check_request_len0() public { _request(0, 0); }
+    |              ^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen0`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:179:14
+    |
+179 |     function check_request_len1() public { _request(1, 0); }
+    |              ^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen1`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:180:14
+    |
+180 |     function check_request_len4() public { _request(4, 0); }
+    |              ^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen4`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:181:14
+    |
+181 |     function check_request_len15() public { _request(15, 0); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen15`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:182:14
+    |
+182 |     function check_request_len16() public { _request(16, 0); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen16`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:183:14
+    |
+183 |     function check_request_len17() public { _request(17, 0); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen17`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:184:14
+    |
+184 |     function check_request_len32() public { _request(32, 0); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen32`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:185:14
+    |
+185 |     function check_request_len36() public { _request(36, 0); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen36`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:186:14
+    |
+186 |     function check_request_len0_fee7() public { _request(0, 1); }
+    |              ^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen0Fee7`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:187:14
+    |
+187 |     function check_request_len16_fee7() public { _request(16, 1); }
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen16Fee7`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:188:14
+    |
+188 |     function check_request_len0_feeMax() public { _request(0, 2); }
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen0FeeMax`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:189:14
+    |
+189 |     function check_request_len16_feeMax() public { _request(16, 2); }
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkRequestLen16FeeMax`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:228:14
+    |
+228 |     function check_systemCall_q0() public { _systemCall(0, 0); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ0`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:229:14
+    |
+229 |     function check_systemCall_q1() public { _systemCall(0, 1); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ1`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:230:14
+    |
+230 |     function check_systemCall_q2() public { _systemCall(0, 2); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ2`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:231:14
+    |
+231 |     function check_systemCall_q3() public { _systemCall(0, 3); }
+    |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ3`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:232:14
+    |
+232 |     function check_systemCall_q16() public { _systemCall(0, 16); }
+    |              ^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ16`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:233:14
+    |
+233 |     function check_systemCall_q17() public { _systemCall(0, 17); }
+    |              ^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ17`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:234:14
+    |
+234 |     function check_systemCall_q40() public { _systemCall(0, 40); }
+    |              ^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ40`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/fv/QueueFV.t.sol:235:14
+    |
+235 |     function check_systemCall_q2_withData() public { _systemCall(16, 2); }
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkSystemCallQ2WithData`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[unused-import]: unused imports should be removed
+ --> test/fv/QueueFV.t.sol:4:15
+  |
+4 | import {Test, Vm} from "forge-std/Test.sol";
+  |               ^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> test/fv/QueueFV.t.sol:85:29
+   |
+85 |             out[i] = bytes1(uint8(v >> (8 * i)));
+   |                             ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'uint8' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/fv/QueueFV.t.sol:196:41
+    |
+196 |         return abi.encodePacked(address(uint160(s0)), le64(uint64(s0 >> 160)), le64(uint64(s1)));
+    |                                         ^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint160' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/fv/QueueFV.t.sol:196:60
+    |
+196 |         return abi.encodePacked(address(uint160(s0)), le64(uint64(s0 >> 160)), le64(uint64(s1)));
+    |                                                            ^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint64' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/fv/QueueFV.t.sol:196:85
+    |
+196 |         return abi.encodePacked(address(uint160(s0)), le64(uint64(s0 >> 160)), le64(uint64(s1)));
+    |                                                                                     ^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint64' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[screaming-snake-case-const]: constants should use SCREAMING_SNAKE_CASE
+  --> test/fv/Svm.sol:16:27
+   |
+16 |     SVM internal constant svm = SVM(0xF3993A62377BCd56AE39D773740A5390411E8BC9);
+   |                           ^^^ help: consider using: `SVM`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-const
+
+note[unsafe-cheatcode]: usage of unsafe cheatcodes that can perform dangerous operations
+  --> test/fv/FeeExhaustive.t.sol:17:19
+   |
+17 |         json = vm.readFile("test/fv/fee_table.json");
+   |                   ^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-cheatcode
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> test/fv/FeeExhaustive.t.sol:70:61
+   |
+70 |             (bool ok_,) = q.call{value: 1}(abi.encodePacked(uint64(i), uint64(0)));
+   |                                                             ^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'uint64' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> test/fv/FeeExhaustive.t.sol:84:61
+   |
+84 |             (bool ok_,) = q.call{value: 1}(abi.encodePacked(uint64(i), uint64(0)));
+   |                                                             ^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'uint64' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[asm-keccak256]: use of inefficient hashing mechanism; consider using inline assembly
+  --> src/RegistrationQueue.sol:50:13
+   |
+50 |             keccak256(abi.encodePacked(POP_DOMAIN, block.chainid, address(this), stakeId, pubkey));
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#asm-keccak256
+
+note[unsafe-cheatcode]: usage of unsafe cheatcodes that can perform dangerous operations
+  --> test/LeanXmssK.t.sol:33:19
+   |
+33 |         json = vm.readFile("test/vectors/leanxmss_k.json");
+   |                   ^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-cheatcode
+
+
+Running 20 tests for test/fv/QueueFV.t.sol:ConsolidationFV

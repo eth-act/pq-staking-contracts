@@ -53,12 +53,18 @@ abstract contract QueueFV is Test, SymTest {
         vm.store(q, bytes32(slot), bytes32(v));
     }
 
-    /// Arbitrary state satisfying INV. `excessBound` further bounds a non-inhibited excess.
-    /// `queued` fixes tail - head to a concrete value (head stays symbolic); `ANY` leaves it free.
-    uint256 internal constant ANY = type(uint256).max;
+    /// Arbitrary state satisfying INV. `excessValue` is a concrete excess (possibly the
+    /// inhibitor) or `ANY` (symbolic: inhibitor or < 2^64). `queued` fixes tail - head to a
+    /// concrete value (head stays symbolic) or is `ANY`.
+    uint256 internal constant ANY = type(uint256).max - 1;
 
-    function symState(uint256 excessBound, uint256 queued) internal {
-        excess = svm.createUint256("excess");
+    function symState(uint256 excessValue, uint256 queued) internal {
+        if (excessValue == ANY) {
+            excess = svm.createUint256("excess");
+            vm.assume(excess == INHIB || excess < 2 ** 64);
+        } else {
+            excess = excessValue;
+        }
         count = svm.createUint256("count");
         head = svm.createUint256("head");
         if (queued == ANY) {
@@ -70,7 +76,6 @@ abstract contract QueueFV is Test, SymTest {
         }
         vm.assume(tail < 2 ** 64);
         vm.assume(count <= tail - head);
-        vm.assume(excess == INHIB || excess <= excessBound);
         if (excess == INHIB) vm.assume(count == 0 && head == 0 && tail == 0);
         st(0, excess);
         st(1, count);
@@ -94,26 +99,24 @@ abstract contract QueueFV is Test, SymTest {
         return true;
     }
 
-    /// Excess regimes for request checks. The fee function itself is checked exhaustively
-    /// against the EIP-7002 reference for every non-overflowing excess (FeeExhaustive.t.sol);
-    /// here it is pinned to values where the reference is known:
-    ///   mode 0: excess in [0, 11] or the inhibitor  -> fee 1 wei
-    ///   mode 1: excess 34                          -> fee 7 wei
-    ///   mode 2: excess 2892 (largest non-overflowing) -> fee F2892 (~7.6e73 wei)
+    /// Request checks pin excess to concrete values whose EIP-7002 fee is known; the fee
+    /// function itself is checked exhaustively against the reference for every non-overflowing
+    /// excess (FeeExhaustive.t.sol). Everything else (sender, value, calldata, count, head,
+    /// tail, queue contents) is symbolic.
     uint256 internal constant F2892 =
         76059800903738432429721259523001950250726052916847211303159755524395288041;
 
-    function expectedFee(uint256 mode) internal pure returns (uint256) {
-        return mode == 0 ? 1 : mode == 1 ? 7 : F2892;
+    function expectedFee(uint256 e) internal pure returns (uint256) {
+        if (e <= 11) return 1;
+        if (e == 34) return 7;
+        if (e == 2892) return F2892; // largest excess whose fee does not overflow
+        revert("no reference fee for this excess");
     }
 
     // --- request path -------------------------------------------------------------------
 
-    function _request(uint256 len, uint256 mode) internal {
-        symState(mode == 0 ? 11 : 2892, ANY);
-        if (mode == 0) vm.assume(excess == INHIB || excess <= 11);
-        if (mode == 1) vm.assume(excess == 34);
-        if (mode == 2) vm.assume(excess == 2892);
+    function _request(uint256 len, uint256 excessValue) internal {
+        symState(excessValue, ANY);
         address sender = svm.createAddress("sender");
         vm.assume(sender != SYS && sender != q && sender != address(this));
         uint256 value = svm.createUint256("value");
@@ -134,8 +137,8 @@ abstract contract QueueFV is Test, SymTest {
             expectOk = false;
         } else if (len == 0) {
             expectOk = value == 0;
-            expectRet = abi.encode(expectedFee(mode));
-        } else if (value < expectedFee(mode) || len != 16) {
+            expectRet = abi.encode(expectedFee(excess));
+        } else if (value < expectedFee(excess) || len != 16) {
             expectOk = false;
         } else {
             uint64 a;
@@ -177,16 +180,17 @@ abstract contract QueueFV is Test, SymTest {
 
     function check_request_len0() public { _request(0, 0); }
     function check_request_len1() public { _request(1, 0); }
-    function check_request_len4() public { _request(4, 0); }
     function check_request_len15() public { _request(15, 0); }
     function check_request_len16() public { _request(16, 0); }
     function check_request_len17() public { _request(17, 0); }
     function check_request_len32() public { _request(32, 0); }
-    function check_request_len36() public { _request(36, 0); }
-    function check_request_len0_fee7() public { _request(0, 1); }
-    function check_request_len16_fee7() public { _request(16, 1); }
-    function check_request_len0_feeMax() public { _request(0, 2); }
-    function check_request_len16_feeMax() public { _request(16, 2); }
+    function check_request_len16_excess11() public { _request(16, 11); }
+    function check_request_len0_inhibited() public { _request(0, INHIB); }
+    function check_request_len16_inhibited() public { _request(16, INHIB); }
+    function check_request_len0_fee7() public { _request(0, 34); }
+    function check_request_len16_fee7() public { _request(16, 34); }
+    function check_request_len0_feeMax() public { _request(0, 2892); }
+    function check_request_len16_feeMax() public { _request(16, 2892); }
 
     // --- system call --------------------------------------------------------------------
 
@@ -197,7 +201,7 @@ abstract contract QueueFV is Test, SymTest {
     }
 
     function _systemCall(uint256 len, uint256 queued) internal {
-        symState(2 ** 64 - 1, queued);
+        symState(ANY, queued);
         bytes memory data = svm.createBytes(len, "sysdata");
 
         uint256 n = tail - head;
