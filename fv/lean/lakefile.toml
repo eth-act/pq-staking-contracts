@@ -1,0 +1,12 @@
+name = "leanxmssk"
+defaultTargets = ["LeanXmssK"]
+
+[[lean_lib]]
+name = "LeanXmssK"
+
+[[lean_lib]]
+name = "Trace"
+
+[[lean_exe]]
+name = "trace"
+root = "Trace.Main"
