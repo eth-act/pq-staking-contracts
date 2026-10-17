@@ -31,8 +31,10 @@ while IFS= read -r -d '' artifact; do
   bytecode=$(jq -r '.bytecode.object' "$artifact")
   runtime=$(jq -r '.deployedBytecode.object' "$artifact")
 
-  # Interfaces and abstract contracts have no bytecode.
+  # Interfaces and abstract contracts have no bytecode. Libraries with only internal functions
+  # are inlined into their callers and have an empty ABI; nothing would deploy or call them.
   [[ "$bytecode" != "0x" ]] || continue
+  [[ $(jq '.abi | length' "$artifact") -ne 0 ]] || continue
 
   if [[ "$bytecode" == *__\$* || "$runtime" == *__\$* ]]; then
     echo "error: $name has unlinked library references; cannot export" >&2

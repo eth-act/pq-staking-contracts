@@ -10,7 +10,6 @@ import {
 } from 'viem'
 import { Chain, type CallResult, type ContractName, SYSTEM_CONTRACTS, type SystemContract, contracts } from '../chain/chain'
 import {
-  PQ_PUBKEY_LENGTH,
   type RegistrationFields,
   authorizationCommitment,
   decodeConsolidationRecords,
@@ -19,10 +18,9 @@ import {
   encodeConsolidation,
   encodeRegistration,
   encodeWithdrawal,
-  mockSignature,
-  randomHex,
   withdrawalCredentials,
 } from '../chain/encoding'
+import { DEMO_KEYS, type DemoKey, popMessage, signProofOfPossession } from '../chain/xmss'
 import { type BlockInput, type ClEvent, Consensus, type Role } from './consensus'
 
 export interface Actor {
@@ -39,9 +37,9 @@ export const ACTORS: Actor[] = [
 /** Validators that exist before the fork; they get stake IDs 0..N-1. */
 export const MIGRATED_VALIDATORS = 3
 
-/** Key an actor generated when creating a stake; needed later to register it. */
+/** Demo key an actor committed to when creating a stake; needed later to register it. */
 export interface KeyBundle {
-  pqPubkey: Hex
+  key: DemoKey
 }
 
 export type TxKind = 'stake' | 'topup' | 'register' | 'withdraw' | 'consolidate'
@@ -87,6 +85,8 @@ export class Simulation {
     PQConsolidation: [],
   }
   private nextTxId = 1
+  /** Each stake commits to the next unused demo key; keys are one per stake. */
+  private nextDemoKey = 0
 
   private constructor(
     readonly chain: Chain,
@@ -149,8 +149,9 @@ export class Simulation {
   }
 
   async stake(actor: Actor, amountEth: string): Promise<Activity> {
-    const keys: KeyBundle = { pqPubkey: randomHex(PQ_PUBKEY_LENGTH) }
-    const commitment = authorizationCommitment(keys.pqPubkey)
+    const key = DEMO_KEYS[this.nextDemoKey]
+    if (!key) throw new Error(`All ${DEMO_KEYS.length} demo keys are in use; reset to start over`)
+    const commitment = authorizationCommitment(key.pubkey)
     const calldata = encodeFunctionData({
       abi: stakingAbi,
       functionName: 'stake',
@@ -161,7 +162,8 @@ export class Simulation {
       const stakeId = decodeFunctionResult({ abi: stakingAbi, functionName: 'stake', data: tx.result.returnValue }) as bigint
       tx.stakeId = stakeId
       tx.title = `Stake ${amountEth} ETH → #${stakeId}`
-      this.keys.set(stakeId, { ...keys, owner: actor.address })
+      this.keys.set(stakeId, { key, owner: actor.address })
+      this.nextDemoKey++
     }
     return tx
   }
@@ -171,20 +173,25 @@ export class Simulation {
     return this.send(actor, 'topup', `Top up #${stakeId} +${amountEth} ETH`, 'PQStaking', calldata, parseEther(amountEth), stakeId)
   }
 
-  /** Registration with the stake's keys and mock signatures; flags tamper with them. */
+  /**
+   * Registration with a leanXMSS-K proof of possession, verified by the registration contract.
+   * `wrongPqKey` signs validly with another key (passes the EL, fails the CL commitment check);
+   * `badPqSignature` corrupts the signature (reverts on the EL).
+   */
   async register(
     actor: Actor,
     role: Role,
     stakeId: bigint,
     tamper: { wrongPqKey?: boolean; badPqSignature?: boolean } = {},
   ): Promise<Activity> {
-    const keys = this.keys.get(stakeId)
-    if (!keys) throw new Error(`no keys for stake ${stakeId}`)
-    const pqPubkey = tamper.wrongPqKey ? randomHex(PQ_PUBKEY_LENGTH) : keys.pqPubkey
-    let pqSignature = mockSignature(stakeId, pqPubkey)
-    if (tamper.badPqSignature) pqSignature = `0x${pqSignature.slice(2, -2)}00`
-    const fields: RegistrationFields = { stakeId, pqPubkey, pqSignature }
+    const own = this.keys.get(stakeId)
+    if (!own) throw new Error(`no keys for stake ${stakeId}`)
+    const key = tamper.wrongPqKey ? DEMO_KEYS.find((k) => k !== own.key)! : own.key
     const contract = role === 'validator' ? 'PQValidatorRegistration' : 'PQBuilderRegistration'
+    const message = popMessage(this.chain.chainId, this.chain.addresses[contract], stakeId, key.pubkey)
+    let pqSignature = signProofOfPossession(key, message)
+    if (tamper.badPqSignature) pqSignature = `0x${pqSignature.slice(2, -2)}${pqSignature.slice(-2) === '00' ? '01' : '00'}`
+    const fields: RegistrationFields = { stakeId, pqPubkey: key.pubkey, pqSignature }
     return this.request(actor, 'register', `Register #${stakeId} as ${role}`, contract, encodeRegistration(fields), stakeId)
   }
 

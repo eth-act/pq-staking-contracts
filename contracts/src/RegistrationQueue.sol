@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import {LeanXmssK} from "./LeanXmssK.sol";
 import {SystemRequestQueue} from "./SystemRequestQueue.sol";
 
 /// @notice Role registration queue: binds a post-quantum key to a stake created in `PQStaking`.
-/// @dev The consensus layer verifies the stake, the key against the stake's authorization
-///      commitment, and the signature (proof of possession). A rejected registration does not
-///      lose the stake.
+/// @dev The proof of possession is a leanXMSS-K signature verified here, so an invalid one
+///      reverts on the execution layer and never reaches the consensus layer. The consensus
+///      layer still checks that the stake exists and is unregistered, that the key opens the
+///      stake's authorization commitment, and that the key is unused. A rejected registration
+///      does not lose the stake.
+///
+///      Proof of possession: signature at the reserved slot `POP_SLOT` (never used for
+///      attestations, since XMSS leaves are one-time keys) over
+///        keccak256(POP_DOMAIN ‖ chain_id (32) ‖ this contract (20) ‖ stake_id (8) ‖ pq_pubkey (32)).
+///      The contract address binds the role, so a validator registration cannot be replayed
+///      into the builder contract or the reverse.
 ///
 ///      Request calldata (exactly 2440 bytes):
 ///        stake_id (u64 BE) ++ pq_pubkey (32) ++ pq_signature (2400)
@@ -19,17 +28,28 @@ abstract contract RegistrationQueue is SystemRequestQueue {
     uint256 internal constant TARGET_REQUESTS_PER_BLOCK = 2;
     uint256 internal constant MAX_REQUESTS_PER_BLOCK = 16;
     uint256 internal constant PQ_PUBKEY_LENGTH = 32;
-    uint256 internal constant PQ_SIGNATURE_LENGTH = 2400;
+    uint256 internal constant PQ_SIGNATURE_LENGTH = LeanXmssK.SIGNATURE_LENGTH;
 
     /// @dev stake_id (8) + pq_pubkey + pq_signature.
     uint256 internal constant REQUEST_LENGTH = 8 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH;
+
+    uint32 internal constant POP_SLOT = type(uint32).max;
+    bytes32 internal constant POP_DOMAIN =
+        keccak256("leanXMSS-K registration proof of possession v1");
 
     /// @dev Raw request calldata, validated on entry.
     mapping(uint256 index => bytes) private queue; // slot 4
 
     function _addRequest(uint256 index, bytes calldata input) internal override {
         if (input.length != REQUEST_LENGTH) revert();
-        _checkStakeId(uint64(bytes8(input[0:8])));
+        uint64 stakeId = uint64(bytes8(input[0:8]));
+        _checkStakeId(stakeId);
+
+        bytes32 pubkey = bytes32(input[8:40]);
+        bytes32 message =
+            keccak256(abi.encodePacked(POP_DOMAIN, block.chainid, address(this), stakeId, pubkey));
+        if (!LeanXmssK.verify(pubkey, POP_SLOT, message, input[40:])) revert();
+
         queue[index] = input;
         _log0(input);
     }

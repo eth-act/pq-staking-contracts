@@ -96,20 +96,3 @@ export const withdrawalAddressOf = (credentials: Hex): Hex => slice(credentials,
  * This mirrors EIP-8413's initial construction, which commits to a BLS key instead.
  */
 export const authorizationCommitment = (pqPubkey: Hex): Hex => concat(['0x01', slice(sha256(pqPubkey), 1)])
-
-// --- Mock signatures ------------------------------------------------------------------------
-
-/** Deterministic stand-in for a PQ signature over `stakeId`, so the model can "verify" it. */
-export function mockSignature(stakeId: bigint, pqPubkey: Hex): Hex {
-  const seed = sha256(concat([u64be(stakeId), pqPubkey]))
-  const blocks = Array.from({ length: Math.ceil(PQ_SIGNATURE_LENGTH / 32) }, (_, i) =>
-    sha256(concat([seed, numberToHex(i, { size: 4 })])),
-  )
-  return slice(concat(blocks), 0, PQ_SIGNATURE_LENGTH)
-}
-
-export function randomHex(length: number): Hex {
-  const bytes = new Uint8Array(length)
-  crypto.getRandomValues(bytes)
-  return bytesToHex(bytes)
-}

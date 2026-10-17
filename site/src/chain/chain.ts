@@ -53,6 +53,11 @@ export class Chain {
     readonly addresses: Record<ContractName, Hex>,
   ) {}
 
+  /** Value of the CHAINID opcode in this EVM; signed into registration proofs. */
+  get chainId(): bigint {
+    return this.evm.common.chainId()
+  }
+
   /** Fund `accounts`, then deploy every contract from its creation bytecode. */
   static async create(
     migratedValidatorCount: bigint,

@@ -12,9 +12,16 @@ Foundry project for the pq staking contracts. Run all commands from this directo
 
 Validators and builders both create stake through `PQStaking`, then register their stake ID
 in the registration contract for their role. Registration carries one post-quantum key
-(32 bytes) and its signature (2400 bytes); there is no BLS key. The consensus layer verifies
-that the stake exists, checks the key against the stake's authorization commitment, and
-verifies the signature.
+(32 bytes) and a proof of possession (2400-byte leanXMSS-K signature); there is no BLS key.
+
+The registration contract verifies the proof of possession (`LeanXmssK`, about 66k gas), so an
+invalid one reverts and never reaches the consensus layer. The proof signs, at the reserved
+slot `2³² − 1`,
+`keccak256(DOMAIN ‖ chain_id ‖ registration_contract ‖ stake_id ‖ pq_pubkey)`, which binds it
+to one stake, one chain and one role. The consensus layer still checks that the stake exists
+and is unregistered, that the key opens the stake's authorization commitment, and that the key
+is unused. leanXMSS-K is a provisional Keccak instance of leanXMSS; its spec and reference
+implementation are in [`xmss/`](../xmss/).
 
 Consolidations, partial withdrawals and exits are keyed by stake ID. The consensus layer
 applies the EIP-7251 / EIP-7002 rules, checking the caller against the stake's withdrawal
@@ -63,8 +70,9 @@ Input integers are big-endian, as in EIP-7002. Output integers are little-endian
 
 Withdrawal and consolidation parameters match EIP-7002 / EIP-7251. The registration
 parameters reuse the EIP-7002 values. A full block of registrations (16) dequeues with about
-2.8M of the 30M system-call gas; queuing one registration costs about 1.8M gas the first
-time its storage slots are written.
+2.8M of the 30M system-call gas. Queuing one registration, including verification, costs about
+1.87M gas the first time its storage slots are written and about 0.32M when the queue reuses
+them.
 
 Example withdrawal request (full exit of stake 42) with `cast`:
 

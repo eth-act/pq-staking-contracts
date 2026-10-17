@@ -22,7 +22,7 @@ exactly the bytecode a release from the same commit would ship.
 | End of block | `SYSTEM_ADDRESS` calls to each system contract | Returned bytes are decoded and shown |
 | Staking logs | `CreateStake` / `TopUp` events, read like deposit logs today | |
 | Consensus layer | Model in `src/sim/consensus.ts` | Follows EIP-8413 and issue #1; delays, churn and balances simplified |
-| Keys and signatures | Random PQ keys, mock signatures the model can check | 32 B key / 2400 B signature; no BLS |
+| Keys and signatures | 12 pre-generated leanXMSS-K demo keys (`src/keys/`, from `xmss/gen_vectors.py`) | Proofs of possession are real signatures made in the browser and verified by the registration contract; one key per stake |
 | Authorization commitment | `0x01 ‖ sha256(pq_pubkey)[1:]` | Demo assumption; EIP-8413's initial version commits to a BLS key |
 
 The chain starts with 3 migrated validators (stake IDs 0–2) so new stake IDs start at 3.

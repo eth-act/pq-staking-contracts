@@ -7,7 +7,6 @@ import {
   type RegistrationFields,
   type WithdrawalRecord,
   authorizationCommitment,
-  mockSignature,
   withdrawalAddressOf,
 } from '../chain/encoding'
 
@@ -118,14 +117,13 @@ export class Consensus {
         reject('key does not match the commitment; stake kept')
       } else if (this.usedCredentials.has(request.pqPubkey)) {
         reject('PQ key already used')
-      } else if (request.pqSignature !== mockSignature(id, request.pqPubkey)) {
-        reject('invalid PQ signature; stake kept')
       } else {
+        // The proof of possession was verified by the registration contract on the EL.
         this.usedCredentials.add(request.pqPubkey)
         stake.status = 'pending'
         stake.role = role
         stake.readyAtBlock = block + ACTIVATION_DELAY_BLOCKS
-        emit('accepted', id, subject, 'PQ signature valid, pending activation')
+        emit('accepted', id, subject, 'key matches commitment, pending activation')
       }
     }
 
