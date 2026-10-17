@@ -11,7 +11,7 @@ import {PQBuilderRegistration} from "../src/PQBuilderRegistration.sol";
 contract RegistrationTest is SystemCallTest {
     uint256 internal constant SYSTEM_CALL_GAS_LIMIT = 30_000_000;
     uint256 internal constant MAX_PER_BLOCK = 16;
-    uint256 internal constant REQUEST_LENGTH = 2584; // 8 + 48 + 96 + 32 + 2400
+    uint256 internal constant REQUEST_LENGTH = 2440; // 8 + 32 + 2400
     uint64 internal constant MAX_STAKE_ID = 2 ** 40 - 1;
 
     address[2] internal registrations;
@@ -26,9 +26,7 @@ contract RegistrationTest is SystemCallTest {
 
     /// Request calldata with every field filled with byte `fill`.
     function input(uint64 stakeId, bytes1 fill) internal pure returns (bytes memory) {
-        return abi.encodePacked(
-            stakeId, filled(fill, 48), filled(fill, 96), filled(fill, 32), filled(fill, 2400)
-        );
+        return abi.encodePacked(stakeId, filled(fill, 32), filled(fill, 2400));
     }
 
     function test_RegistersAgainstStakeIdFromStaking() public {

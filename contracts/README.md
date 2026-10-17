@@ -5,16 +5,16 @@ Foundry project for the pq staking contracts. Run all commands from this directo
 | Contract | Description |
 | --- | --- |
 | `PQStaking` | Staking contract per [EIP-8413](https://github.com/ethereum/EIPs/pull/12306): `stake(withdrawalCredentials, authorizationCommitment) → stakeId` and `topup(stakeId)`. Stake creations and top-ups share one event index; a stake ID is the index of its `CreateStake` event. |
-| `PQValidatorRegistration` | System contract. Queues a registration binding a BLS key and a PQ key, each with its own signature, to a stake. |
+| `PQValidatorRegistration` | System contract. Queues a registration binding a PQ key, with its signature, to a stake. |
 | `PQBuilderRegistration` | Same code; queues builder registrations. The consensus layer tells the two apart by address. |
 | `PQConsolidation` | System contract. Queues a consolidation with the caller as source address. |
 | `PQWithdrawal` | System contract. Queues a withdrawal with the caller as source address. Amount `0` requests a full exit, or recovery of an unregistered stake. |
 
 Validators and builders both create stake through `PQStaking`, then register their stake ID
-in the registration contract for their role. Registration carries two public keys, BLS
-(48-byte key, 96-byte signature) and post-quantum (32-byte key, 2400-byte signature), each
-with its own signature. The consensus layer verifies that the stake exists,
-checks the keys against the stake's authorization commitment, and verifies both signatures.
+in the registration contract for their role. Registration carries one post-quantum key
+(32 bytes) and its signature (2400 bytes); there is no BLS key. The consensus layer verifies
+that the stake exists, checks the key against the stake's authorization commitment, and
+verifies the signature.
 
 Consolidations, partial withdrawals and exits are keyed by stake ID. The consensus layer
 applies the EIP-7251 / EIP-7002 rules, checking the caller against the stake's withdrawal
@@ -59,11 +59,11 @@ Input integers are big-endian, as in EIP-7002. Output integers are little-endian
 | --- | --- | --- | --- | --- |
 | `PQWithdrawal` | 16 bytes: `stake_id (u64) ++ amount_gwei (u64)` | `source_address (20) ++ calldata` | 36 bytes each: `source_address ++ stake_id (u64 LE) ++ amount_gwei (u64 LE)` | 2 / 16 |
 | `PQConsolidation` | 16 bytes: `source_stake_id (u64) ++ target_stake_id (u64)` | `source_address (20) ++ calldata` | 36 bytes each: `source_address ++ source_stake_id (u64 LE) ++ target_stake_id (u64 LE)` | 1 / 2 |
-| `PQValidatorRegistration`, `PQBuilderRegistration` | 2584 bytes: `stake_id (u64) ++ bls_pubkey (48) ++ bls_signature (96) ++ pq_pubkey (32) ++ pq_signature (2400)` | calldata | 2584 bytes each: the calldata with `stake_id` little-endian, i.e. SSZ `List[RegistrationRequest]` of the fixed-size `RegistrationRequest { stake_id: uint64, bls_pubkey: Bytes48, bls_signature: Bytes96, pq_pubkey: Bytes32, pq_signature: Bytes2400 }` | 2 / 16 |
+| `PQValidatorRegistration`, `PQBuilderRegistration` | 2440 bytes: `stake_id (u64) ++ pq_pubkey (32) ++ pq_signature (2400)` | calldata | 2440 bytes each: the calldata with `stake_id` little-endian, i.e. SSZ `List[RegistrationRequest]` of the fixed-size `RegistrationRequest { stake_id: uint64, pq_pubkey: Bytes32, pq_signature: Bytes2400 }` | 2 / 16 |
 
 Withdrawal and consolidation parameters match EIP-7002 / EIP-7251. The registration
 parameters reuse the EIP-7002 values. A full block of registrations (16) dequeues with about
-2.9M of the 30M system-call gas; queuing one registration costs about 1.9M gas the first
+2.8M of the 30M system-call gas; queuing one registration costs about 1.8M gas the first
 time its storage slots are written.
 
 Example withdrawal request (full exit of stake 42) with `cast`:

@@ -11,7 +11,6 @@ import {
 import { Chain, type CallResult, type ContractName, SYSTEM_CONTRACTS, type SystemContract, contracts } from '../chain/chain'
 import {
   PQ_PUBKEY_LENGTH,
-  PQ_SIGNATURE_LENGTH,
   type RegistrationFields,
   authorizationCommitment,
   decodeConsolidationRecords,
@@ -40,9 +39,8 @@ export const ACTORS: Actor[] = [
 /** Validators that exist before the fork; they get stake IDs 0..N-1. */
 export const MIGRATED_VALIDATORS = 3
 
-/** Keys an actor generated when creating a stake; needed later to register it. */
+/** Key an actor generated when creating a stake; needed later to register it. */
 export interface KeyBundle {
-  blsPubkey: Hex
   pqPubkey: Hex
 }
 
@@ -151,8 +149,8 @@ export class Simulation {
   }
 
   async stake(actor: Actor, amountEth: string): Promise<Activity> {
-    const keys: KeyBundle = { blsPubkey: randomHex(48), pqPubkey: randomHex(PQ_PUBKEY_LENGTH) }
-    const commitment = authorizationCommitment(keys.blsPubkey, keys.pqPubkey)
+    const keys: KeyBundle = { pqPubkey: randomHex(PQ_PUBKEY_LENGTH) }
+    const commitment = authorizationCommitment(keys.pqPubkey)
     const calldata = encodeFunctionData({
       abi: stakingAbi,
       functionName: 'stake',
@@ -183,15 +181,9 @@ export class Simulation {
     const keys = this.keys.get(stakeId)
     if (!keys) throw new Error(`no keys for stake ${stakeId}`)
     const pqPubkey = tamper.wrongPqKey ? randomHex(PQ_PUBKEY_LENGTH) : keys.pqPubkey
-    let pqSignature = mockSignature('pq', stakeId, pqPubkey, PQ_SIGNATURE_LENGTH)
+    let pqSignature = mockSignature(stakeId, pqPubkey)
     if (tamper.badPqSignature) pqSignature = `0x${pqSignature.slice(2, -2)}00`
-    const fields: RegistrationFields = {
-      stakeId,
-      blsPubkey: keys.blsPubkey,
-      blsSignature: mockSignature('bls', stakeId, keys.blsPubkey, 96),
-      pqPubkey,
-      pqSignature,
-    }
+    const fields: RegistrationFields = { stakeId, pqPubkey, pqSignature }
     const contract = role === 'validator' ? 'PQValidatorRegistration' : 'PQBuilderRegistration'
     return this.request(actor, 'register', `Register #${stakeId} as ${role}`, contract, encodeRegistration(fields), stakeId)
   }

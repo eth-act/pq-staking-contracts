@@ -21,8 +21,6 @@ function cut(hex: Hex, fields: [label: string, length: number][]): Segment[] {
 
 /** Registration fields after stake_id; same order in calldata and system-call records. */
 const REGISTRATION_FIELDS: [string, number][] = [
-  ['bls_pubkey', 48],
-  ['bls_signature', 96],
   ['pq_pubkey', PQ_PUBKEY_LENGTH],
   ['pq_signature', PQ_SIGNATURE_LENGTH],
 ]

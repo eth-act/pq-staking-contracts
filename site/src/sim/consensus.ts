@@ -1,7 +1,7 @@
 // Simplified consensus-layer model. Nothing here runs on-chain: it interprets the requests the
 // system contracts emit, following EIP-8413 and the decisions in issue #1. Delays, churn and
 // balances are simplified for illustration.
-import { type Hex, size } from 'viem'
+import type { Hex } from 'viem'
 import {
   type ConsolidationRecord,
   type RegistrationFields,
@@ -114,21 +114,18 @@ export class Consensus {
       const reject = (text: string) => emit('ignored', id, subject, text)
       if (!stake) reject('no such stake')
       else if (stake.status !== 'unregistered') reject(`stake is ${stake.status}`)
-      else if (authorizationCommitment(request.blsPubkey, request.pqPubkey) !== stake.authorizationCommitment) {
-        reject('keys do not match the commitment; stake kept')
-      } else if (this.usedCredentials.has(request.blsPubkey) || this.usedCredentials.has(request.pqPubkey)) {
-        reject('credential already used')
-      } else if (request.blsSignature !== mockSignature('bls', id, request.blsPubkey, 96)) {
-        reject('invalid BLS signature; stake kept')
-      } else if (request.pqSignature !== mockSignature('pq', id, request.pqPubkey, size(request.pqSignature))) {
+      else if (authorizationCommitment(request.pqPubkey) !== stake.authorizationCommitment) {
+        reject('key does not match the commitment; stake kept')
+      } else if (this.usedCredentials.has(request.pqPubkey)) {
+        reject('PQ key already used')
+      } else if (request.pqSignature !== mockSignature(id, request.pqPubkey)) {
         reject('invalid PQ signature; stake kept')
       } else {
-        this.usedCredentials.add(request.blsPubkey)
         this.usedCredentials.add(request.pqPubkey)
         stake.status = 'pending'
         stake.role = role
         stake.readyAtBlock = block + ACTIVATION_DELAY_BLOCKS
-        emit('accepted', id, subject, 'both signatures valid, pending activation')
+        emit('accepted', id, subject, 'PQ signature valid, pending activation')
       }
     }
 

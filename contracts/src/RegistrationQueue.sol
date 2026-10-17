@@ -3,21 +3,17 @@ pragma solidity 0.8.30;
 
 import {SystemRequestQueue} from "./SystemRequestQueue.sol";
 
-/// @notice Role registration queue: binds a BLS key and a post-quantum key, each with its own
-///         signature, to a stake created in `PQStaking`.
-/// @dev The consensus layer verifies the stake, the keys against the stake's authorization
-///      commitment, and both signatures. A rejected registration does not lose the stake.
+/// @notice Role registration queue: binds a post-quantum key to a stake created in `PQStaking`.
+/// @dev The consensus layer verifies the stake, the key against the stake's authorization
+///      commitment, and the signature (proof of possession). A rejected registration does not
+///      lose the stake.
 ///
-///      Request calldata (exactly 2584 bytes):
-///        stake_id (u64 BE) ++ bls_pubkey (48) ++ bls_signature (96) ++
-///        pq_pubkey (32) ++ pq_signature (2400)
+///      Request calldata (exactly 2440 bytes):
+///        stake_id (u64 BE) ++ pq_pubkey (32) ++ pq_signature (2400)
 ///      Log: log0, data = calldata
-///      System call output: concatenated 2584-byte records, i.e. SSZ `List[RegistrationRequest]`
+///      System call output: concatenated 2440-byte records, i.e. SSZ `List[RegistrationRequest]`
 ///      of the fixed-size container
-///        RegistrationRequest {
-///            stake_id: uint64, bls_pubkey: Bytes48, bls_signature: Bytes96,
-///            pq_pubkey: Bytes32, pq_signature: Bytes2400
-///        }
+///        RegistrationRequest { stake_id: uint64, pq_pubkey: Bytes32, pq_signature: Bytes2400 }
 ///      Each record is the calldata with stake_id converted to little-endian.
 abstract contract RegistrationQueue is SystemRequestQueue {
     uint256 internal constant TARGET_REQUESTS_PER_BLOCK = 2;
@@ -25,8 +21,8 @@ abstract contract RegistrationQueue is SystemRequestQueue {
     uint256 internal constant PQ_PUBKEY_LENGTH = 32;
     uint256 internal constant PQ_SIGNATURE_LENGTH = 2400;
 
-    /// @dev stake_id (8) + bls_pubkey (48) + bls_signature (96) + pq_pubkey + pq_signature.
-    uint256 internal constant REQUEST_LENGTH = 8 + 48 + 96 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH;
+    /// @dev stake_id (8) + pq_pubkey + pq_signature.
+    uint256 internal constant REQUEST_LENGTH = 8 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH;
 
     /// @dev Raw request calldata, validated on entry.
     mapping(uint256 index => bytes) private queue; // slot 4

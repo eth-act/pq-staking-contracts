@@ -18,21 +18,19 @@ export const encodeWithdrawal = (stakeId: bigint, amountGwei: bigint): Hex =>
 export const encodeConsolidation = (sourceStakeId: bigint, targetStakeId: bigint): Hex =>
   concat([u64be(sourceStakeId), u64be(targetStakeId)])
 
-/** Post-quantum key and signature sizes; a registration request is exactly 2584 bytes. */
+/** Post-quantum key and signature sizes; a registration request is exactly 2440 bytes. */
 export const PQ_PUBKEY_LENGTH = 32
 export const PQ_SIGNATURE_LENGTH = 2400
-export const REGISTRATION_LENGTH = 8 + 48 + 96 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH
+export const REGISTRATION_LENGTH = 8 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH
 
 export interface RegistrationFields {
   stakeId: bigint
-  blsPubkey: Hex
-  blsSignature: Hex
   pqPubkey: Hex
   pqSignature: Hex
 }
 
 export const encodeRegistration = (r: RegistrationFields): Hex =>
-  concat([u64be(r.stakeId), r.blsPubkey, r.blsSignature, r.pqPubkey, r.pqSignature])
+  concat([u64be(r.stakeId), r.pqPubkey, r.pqSignature])
 
 // --- System call output ---------------------------------------------------------------------
 
@@ -72,16 +70,14 @@ export function decodeConsolidationRecords(out: Uint8Array): ConsolidationRecord
   return records
 }
 
-/** Decode fixed 2584-byte registration records (stake_id little-endian). */
+/** Decode fixed 2440-byte registration records (stake_id little-endian). */
 export function decodeRegistrationRecords(out: Uint8Array): RegistrationFields[] {
   const records: RegistrationFields[] = []
   for (let o = 0; o < out.length; o += REGISTRATION_LENGTH) {
     records.push({
       stakeId: readLe(out, o, 8),
-      blsPubkey: bytesToHex(out.slice(o + 8, o + 56)),
-      blsSignature: bytesToHex(out.slice(o + 56, o + 152)),
-      pqPubkey: bytesToHex(out.slice(o + 152, o + 152 + PQ_PUBKEY_LENGTH)),
-      pqSignature: bytesToHex(out.slice(o + 152 + PQ_PUBKEY_LENGTH, o + REGISTRATION_LENGTH)),
+      pqPubkey: bytesToHex(out.slice(o + 8, o + 8 + PQ_PUBKEY_LENGTH)),
+      pqSignature: bytesToHex(out.slice(o + 8 + PQ_PUBKEY_LENGTH, o + REGISTRATION_LENGTH)),
     })
   }
   return records
@@ -96,21 +92,20 @@ export const withdrawalCredentials = (address: Hex): Hex =>
 export const withdrawalAddressOf = (credentials: Hex): Hex => slice(credentials, 12, 32)
 
 /**
- * Demo assumption: version 0x01 commits to both public keys,
- * `0x01 || sha256(bls_pubkey || pq_pubkey)[1:]`. EIP-8413 only defines a BLS-only version.
+ * Demo assumption: version 0x01 commits to the PQ public key, `0x01 || sha256(pq_pubkey)[1:]`.
+ * This mirrors EIP-8413's initial construction, which commits to a BLS key instead.
  */
-export const authorizationCommitment = (blsPubkey: Hex, pqPubkey: Hex): Hex =>
-  concat(['0x01', slice(sha256(concat([blsPubkey, pqPubkey])), 1)])
+export const authorizationCommitment = (pqPubkey: Hex): Hex => concat(['0x01', slice(sha256(pqPubkey), 1)])
 
 // --- Mock signatures ------------------------------------------------------------------------
 
-/** Deterministic stand-in for a signature over `stakeId`, so the model can "verify" it. */
-export function mockSignature(scheme: 'bls' | 'pq', stakeId: bigint, pubkey: Hex, length: number): Hex {
-  const seed = sha256(concat([numberToHex(scheme === 'bls' ? 1 : 2, { size: 1 }), u64be(stakeId), pubkey]))
-  const blocks = Array.from({ length: Math.ceil(length / 32) }, (_, i) =>
+/** Deterministic stand-in for a PQ signature over `stakeId`, so the model can "verify" it. */
+export function mockSignature(stakeId: bigint, pqPubkey: Hex): Hex {
+  const seed = sha256(concat([u64be(stakeId), pqPubkey]))
+  const blocks = Array.from({ length: Math.ceil(PQ_SIGNATURE_LENGTH / 32) }, (_, i) =>
     sha256(concat([seed, numberToHex(i, { size: 4 })])),
   )
-  return slice(concat(blocks), 0, length)
+  return slice(concat(blocks), 0, PQ_SIGNATURE_LENGTH)
 }
 
 export function randomHex(length: number): Hex {
