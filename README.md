@@ -6,7 +6,7 @@ Staking and registration contracts for pq validators and builders.
 | --- | --- |
 | [`contracts/`](contracts/) | Foundry project: contracts, tests, bytecode export. Released bytecode docs live here. |
 | [`site/`](site/) | Interactive model: the contract bytecode running in an in-browser EVM, with a simulated consensus layer. Deployed to GitHub Pages from `main`. |
-| [`xmss/`](xmss/) | leanXMSS-K (provisional Keccak instance of leanXMSS): spec, Python reference, and the generator for contract test vectors and site demo keys. |
+| [`xmss/`](xmss/) | leanXMSS-K (Keccak instance of leanXMSS, specified here until upstream publishes one): spec, Python reference, and the generator for contract test vectors and site demo keys. |
 
 ## Releases
 

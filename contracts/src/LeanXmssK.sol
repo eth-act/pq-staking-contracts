@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 /// @title LeanXmssK
-/// @notice Verifier for leanXMSS-K (provisional): two layers of height-16 XMSS with WOTS+C
+/// @notice Verifier for leanXMSS-K: two layers of height-16 XMSS with WOTS+C
 ///         (w = 4, 58 chains, target sum 106) over Keccak-256 truncated to 16 bytes.
 /// @dev Byte-level spec and reference implementation: `xmss/README.md`, `xmss/leanxmss_k.py`.
 ///      Public key: root (16) ‖ public seed P (16). Signature: top layer ‖ bottom layer, each

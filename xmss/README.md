@@ -1,14 +1,16 @@
-# leanXMSS-K (provisional)
+# leanXMSS-K
 
 A byte-level instance of the [leanXMSS proposal](https://sphincs.art/xmss/) using the EVM's
 Keccak-256, so the registration contracts can verify proofs of possession on the execution
 layer.
 
-**Provisional.** The leanXMSS proposal fixes the parameters but not the byte encoding, and it
-uses BLAKE2s. Everything below the parameter table is defined here, and must be reconciled with
-the official Keccak instance when it exists. `leanxmss_k.py` is the reference implementation;
-the Solidity verifier (`contracts/src/LeanXmssK.sol`) and the site signer
-(`site/src/chain/xmss.ts`) must match it byte for byte.
+**This document is the spec** for this repository until the leanXMSS authors publish their
+Keccak instance. The leanXMSS proposal fixes the parameters but not the byte encoding (and uses
+BLAKE2s), so everything below the parameter table is defined here. When the upstream Keccak
+instance appears, compare it against the encoding choices below and align this spec with it.
+`leanxmss_k.py` is the reference implementation; the Solidity verifier
+(`contracts/src/LeanXmssK.sol`) and the site signer (`site/src/chain/xmss.ts`) must match it
+byte for byte.
 
 ## Parameters
 

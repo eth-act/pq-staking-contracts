@@ -1,4 +1,4 @@
-"""Reference implementation of leanXMSS-K (provisional). See README.md for the spec."""
+"""Reference implementation of leanXMSS-K. See README.md for the spec."""
 
 from __future__ import annotations
 

@@ -20,8 +20,8 @@ slot `2³² − 1`,
 `keccak256(DOMAIN ‖ chain_id ‖ registration_contract ‖ stake_id ‖ pq_pubkey)`, which binds it
 to one stake, one chain and one role. The consensus layer still checks that the stake exists
 and is unregistered, that the key opens the stake's authorization commitment, and that the key
-is unused. leanXMSS-K is a provisional Keccak instance of leanXMSS; its spec and reference
-implementation are in [`xmss/`](../xmss/).
+is unused. leanXMSS-K is a Keccak instance of leanXMSS defined in this repository; its spec and
+reference implementation are in [`xmss/`](../xmss/).
 
 Consolidations, partial withdrawals and exits are keyed by stake ID. The consensus layer
 applies the EIP-7251 / EIP-7002 rules, checking the caller against the stake's withdrawal
