@@ -3,6 +3,8 @@
 Outputs (committed):
   contracts/test/vectors/leanxmss_k.json
   site/src/keys/leanxmss-k-keys.json
+
+No key signs two different messages with one leaf (see README "One message per leaf").
 """
 
 import json
@@ -22,7 +24,10 @@ VALIDATOR_REGISTRATION = bytes.fromhex("0000000000000000000000000000000000007a11
 BUILDER_REGISTRATION = bytes.fromhex("000000000000000000000000000000000000b111")
 
 GENERIC_SLOT = 0x0003_0005
+LAST_SLOT = (1 << 32) - 1
 SITE_KEY_COUNT = 12
+# The site stores this level of the PoP bottom tree and rebuilds the 2^8-leaf subtree under it.
+SITE_STORED_LEVEL = 8
 
 
 def hx(b: bytes) -> str:
@@ -33,49 +38,67 @@ def seeds(label: str) -> tuple[bytes, bytes]:
     return x.K(f"leanXMSS-K {label} sk_seed".encode()), x.K(f"leanXMSS-K {label} P".encode())[: x.N]
 
 
-def checked(key: x.KeyPair, slot: int, message: bytes) -> bytes:
-    sig = key.sign(slot, message)
-    assert x.verify(key.pubkey, slot, message, sig), "reference verify failed"
-    tampered = bytearray(sig)
-    tampered[-1] ^= 1
-    assert not x.verify(key.pubkey, slot, message, bytes(tampered)), "tampered signature verified"
-    return sig
+class Signer:
+    """Signs with one key and refuses to sign two different messages on one slot."""
+
+    def __init__(self, key: x.KeyPair):
+        self.key = key
+        self.used: dict[int, bytes] = {}
+
+    def sign(self, slot: int, message: bytes) -> bytes:
+        assert self.used.setdefault(slot, message) == message, f"slot {slot:#x} already signed another message"
+        sig = self.key.sign(slot, message)
+        assert x.verify(self.key.pubkey, slot, message, sig), "reference verify failed"
+        tampered = bytearray(sig)
+        tampered[-1] ^= 1
+        assert not x.verify(self.key.pubkey, slot, message, bytes(tampered)), "tampered signature verified"
+        return sig
+
+
+def registration(signer: Signer, contract: bytes, stake_id: int) -> dict:
+    pop = x.pop_message(FORGE_CHAIN_ID, contract, stake_id, signer.key.pubkey)
+    slot = x.pop_slot(pop)
+    return {
+        "contract": hx(contract),
+        "stakeId": stake_id,
+        "pubkey": hx(signer.key.pubkey),
+        "message": hx(pop),
+        "slot": slot,
+        "signature": hx(signer.sign(slot, pop)),
+    }
 
 
 def main() -> None:
     with Pool(os.cpu_count()) as pool:
-        key_a = x.keygen(*seeds("test key A"), bottom_trees=[0xFFFF, GENERIC_SLOT >> 16], pool=pool)
-        key_b = x.keygen(*seeds("test key B"), bottom_trees=[0xFFFF], pool=pool)
+        key_a = Signer(x.keygen(*seeds("test key A"), bottom_trees=[x.POP_TOP_LEAF, GENERIC_SLOT >> 16], pool=pool))
+        key_b = Signer(x.keygen(*seeds("test key B"), bottom_trees=[x.POP_TOP_LEAF], pool=pool))
+
+        # Key A registers twice (validator and builder role, stake 3); each lands on its own leaf.
+        registrations = [
+            registration(key_a, VALIDATOR_REGISTRATION, 3),
+            registration(key_a, BUILDER_REGISTRATION, 3),
+            registration(key_b, VALIDATOR_REGISTRATION, 4),
+        ]
+
+        # Registration 0's message signed at a neighbouring PoP leaf: a valid signature that the
+        # registration contract must reject, because it derives the leaf from the message.
+        reg0 = registrations[0]
+        wrong_slot = reg0["slot"] ^ 1
+        wrong_leaf = {**reg0, "slot": wrong_slot, "signature": hx(key_a.sign(wrong_slot, bytes.fromhex(reg0["message"][2:])))}
 
         message = x.K(b"leanXMSS-K test message")
-        registrations = []
-        for key, contract, stake_id in [
-            (key_a, VALIDATOR_REGISTRATION, 3),
-            (key_a, BUILDER_REGISTRATION, 3),
-            (key_b, VALIDATOR_REGISTRATION, 4),
-        ]:
-            pop = x.pop_message(FORGE_CHAIN_ID, contract, stake_id, key.pubkey)
-            registrations.append(
-                {
-                    "contract": hx(contract),
-                    "stakeId": stake_id,
-                    "pubkey": hx(key.pubkey),
-                    "message": hx(pop),
-                    "signature": hx(checked(key, x.POP_SLOT, pop)),
-                }
-            )
-
         vectors = {
             "chainId": FORGE_CHAIN_ID,
-            "popSlot": x.POP_SLOT,
             "popDomain": hx(x.POP_DOMAIN),
-            "pubkeyA": hx(key_a.pubkey),
-            "pubkeyB": hx(key_b.pubkey),
+            "pubkeyA": hx(key_a.key.pubkey),
+            "pubkeyB": hx(key_b.key.pubkey),
             "message": hx(message),
-            "popSlotSignature": hx(checked(key_a, x.POP_SLOT, message)),
+            "lastSlot": LAST_SLOT,
+            "lastSlotSignature": hx(key_a.sign(LAST_SLOT, message)),
             "genericSlot": GENERIC_SLOT,
-            "genericSlotSignature": hx(checked(key_a, GENERIC_SLOT, message)),
+            "genericSlotSignature": hx(key_a.sign(GENERIC_SLOT, message)),
             "registrations": registrations,
+            "wrongLeafRegistration": wrong_leaf,
         }
         CONTRACT_VECTORS.parent.mkdir(parents=True, exist_ok=True)
         CONTRACT_VECTORS.write_text(json.dumps(vectors, indent=2) + "\n")
@@ -84,16 +107,22 @@ def main() -> None:
         site_keys = []
         for n in range(SITE_KEY_COUNT):
             sk_seed, P = seeds(f"site demo key {n}")
-            key = x.keygen(sk_seed, P, bottom_trees=[0xFFFF], pool=pool)
-            bottom = key.bottoms[0xFFFF]
+            key = x.keygen(sk_seed, P, bottom_trees=[x.POP_TOP_LEAF], pool=pool)
+            bottom = key.bottoms[x.POP_TOP_LEAF]
+            top_sig = x.sign_layer(sk_seed, P, x.TOP, 0, x.POP_TOP_LEAF, bottom.root, key.top.auth_path(x.POP_TOP_LEAF))
             site_keys.append(
                 {
                     "skSeed": hx(sk_seed),
                     "publicSeed": hx(P),
                     "pubkey": hx(key.pubkey),
-                    # The PoP slot's top layer signs the fixed bottom root, so it never changes.
-                    "topSignature": hx(x.sign_layer(sk_seed, P, x.TOP, 0, 0xFFFF, bottom.root, key.top.auth_path(0xFFFF))),
-                    "bottomAuthPath": hx(b"".join(bottom.auth_path(0xFFFF))),
+                    # Top leaf 0xFFFF always signs the PoP bottom tree's root, so with deterministic
+                    # rho its top-layer signature is the same for every PoP slot.
+                    "topSignature": hx(top_sig),
+                    # Level SITE_STORED_LEVEL of the PoP bottom tree (2^8 nodes). The site rebuilds the
+                    # 256-leaf subtree under one of these for the levels below.
+                    "storedLevel": SITE_STORED_LEVEL,
+                    "bottomLevelNodes": hx(b"".join(bottom.levels[SITE_STORED_LEVEL])),
+                    "bottomRoot": hx(bottom.root),
                 }
             )
             print(f"site key {n + 1}/{SITE_KEY_COUNT}")

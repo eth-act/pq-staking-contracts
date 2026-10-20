@@ -78,8 +78,21 @@ Signing message `M` with randomness `ρ` (16 bytes):
 4. The signature values are `σ_i = chain(s_i, 0→a_i)`. The verifier finishes each chain:
    `e_i = chain(σ_i, a_i→3)`, which is `Σ (3 − a_i) = 68` chain steps per layer.
 
-The reference signer derives `ρ` as `T16(K(sk_seed ‖ T(3, layer, tree, leaf, 0, 0) ‖ M ‖ counter))`
-with an 8-byte counter. Any `ρ` that gives a valid encoding verifies.
+`ρ` MUST be deterministic: `ρ = T16(K(sk_seed ‖ T(3, layer, tree, leaf, 0, 0) ‖ M ‖ counter))` with
+an 8-byte big-endian counter starting at 0, taking the first counter whose digits sum to 106.
+The verifier cannot check this, but a signer that picks a fresh `ρ` when re-signing the same
+message at the same leaf produces a different digit vector, which is the reuse described below.
+
+### One message per leaf
+
+Each WOTS+C leaf is a one-time key. A leaf MUST NOT sign two different messages: from two
+signatures with digit vectors `a, a'`, anyone can compute chain `i` at every position
+`≥ min(a_i, a'_i)` and grind `ρ` for a third message whose digits all lie above those minimums
+(about 2⁴⁷ hashes for two signatures, far fewer for three or more).
+
+- Re-signing the same message at the same leaf is safe: deterministic `ρ` makes it byte-identical.
+- A top leaf `t` always signs the same message (bottom tree `t`'s root), so with deterministic `ρ`
+  its top-layer signature is identical for every slot under `t`.
 
 ### Trees
 
@@ -109,17 +122,24 @@ Signature = top layer ‖ bottom layer (2,400 bytes).
 
 ## Registration proof of possession
 
-XMSS leaves are one-time keys, so the proof of possession uses a reserved leaf that never
-signs attestations:
+Proofs of possession use the **PoP range**: top leaf `0xFFFF`, i.e. slots
+`0xFFFF0000 … 0xFFFFFFFF`. These 65,536 slots MUST NOT be used for attestations.
 
-- Slot `2³² − 1` (top leaf `0xFFFF`, bottom leaf `0xFFFF`).
 - Message:
   `M = K(DOMAIN ‖ chain_id (32) ‖ registration_contract (20) ‖ stake_id (8) ‖ pq_pubkey (32))`,
   with `DOMAIN = K("leanXMSS-K registration proof of possession v1")`.
+- Slot: `0xFFFF0000 | (M mod 2¹⁶)`, i.e. the bottom leaf is the last two bytes of `M`. The
+  verifier derives the slot from `M`; the request does not carry it.
 
 Binding the registration contract's address stops a copied validator registration from being
 replayed into the builder registration contract (and the reverse). Binding `stake_id` and
 `chain_id` stops replay onto another stake or chain.
+
+Deriving the leaf from `M` gives each distinct registration (chain, role, stake) its own leaf,
+so registering one key several times does not reuse a leaf (issue #2). Two different messages
+land on the same leaf with probability about `n² / 2¹⁷` for `n` registrations of one key
+(0.005% for 3). A signer MUST track the PoP leaves it has used and refuse to sign a different
+message on one of them; the operator then registers with another stake.
 
 ## Files
 

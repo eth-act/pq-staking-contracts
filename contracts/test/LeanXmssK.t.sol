@@ -23,9 +23,9 @@ contract LeanXmssKTest is Test {
     bytes32 internal pubkeyA;
     bytes32 internal pubkeyB;
     bytes32 internal message;
-    uint32 internal popSlot;
+    uint32 internal lastSlot;
     uint32 internal genericSlot;
-    bytes internal popSig;
+    bytes internal lastSig;
     bytes internal genericSig;
 
     function setUp() public {
@@ -34,32 +34,32 @@ contract LeanXmssKTest is Test {
         pubkeyA = vm.parseJsonBytes32(json, ".pubkeyA");
         pubkeyB = vm.parseJsonBytes32(json, ".pubkeyB");
         message = vm.parseJsonBytes32(json, ".message");
-        popSlot = uint32(vm.parseJsonUint(json, ".popSlot"));
+        lastSlot = uint32(vm.parseJsonUint(json, ".lastSlot"));
         genericSlot = uint32(vm.parseJsonUint(json, ".genericSlot"));
-        popSig = vm.parseJsonBytes(json, ".popSlotSignature");
+        lastSig = vm.parseJsonBytes(json, ".lastSlotSignature");
         genericSig = vm.parseJsonBytes(json, ".genericSlotSignature");
     }
 
     function test_AcceptsReferenceSignatures() public view {
-        assertTrue(harness.verify(pubkeyA, popSlot, message, popSig));
+        assertTrue(harness.verify(pubkeyA, lastSlot, message, lastSig));
         assertTrue(harness.verify(pubkeyA, genericSlot, message, genericSig));
     }
 
     function test_RejectsWrongSlot() public view {
-        assertFalse(harness.verify(pubkeyA, genericSlot, message, popSig));
-        assertFalse(harness.verify(pubkeyA, popSlot, message, genericSig));
+        assertFalse(harness.verify(pubkeyA, genericSlot, message, lastSig));
+        assertFalse(harness.verify(pubkeyA, lastSlot, message, genericSig));
         // Same top leaf, different bottom leaf.
         assertFalse(harness.verify(pubkeyA, genericSlot + 1, message, genericSig));
     }
 
     function test_RejectsWrongMessage() public view {
-        assertFalse(harness.verify(pubkeyA, popSlot, keccak256("other"), popSig));
+        assertFalse(harness.verify(pubkeyA, lastSlot, keccak256("other"), lastSig));
     }
 
     function test_RejectsWrongPubkey() public view {
-        assertFalse(harness.verify(pubkeyB, popSlot, message, popSig));
+        assertFalse(harness.verify(pubkeyB, lastSlot, message, lastSig));
         // Same root, different public seed.
-        assertFalse(harness.verify(pubkeyA ^ bytes32(uint256(1)), popSlot, message, popSig));
+        assertFalse(harness.verify(pubkeyA ^ bytes32(uint256(1)), lastSlot, message, lastSig));
     }
 
     /// One flipped bit in each field of each layer must invalidate the signature.
@@ -68,19 +68,19 @@ contract LeanXmssKTest is Test {
         uint256[5] memory offsets = [uint256(0), 16, 16 + 57 * 16, 944, 1199];
         for (uint256 layer; layer < 2; layer++) {
             for (uint256 f; f < offsets.length; f++) {
-                bytes memory sig = bytes.concat(popSig);
+                bytes memory sig = bytes.concat(lastSig);
                 sig[layer * 1200 + offsets[f]] ^= 0x01;
-                assertFalse(harness.verify(pubkeyA, popSlot, message, sig));
+                assertFalse(harness.verify(pubkeyA, lastSlot, message, sig));
             }
         }
     }
 
     function test_RejectsWrongLength() public view {
-        assertFalse(harness.verify(pubkeyA, popSlot, message, bytes.concat(popSig, hex"00")));
+        assertFalse(harness.verify(pubkeyA, lastSlot, message, bytes.concat(lastSig, hex"00")));
         bytes memory short = new bytes(2399);
         for (uint256 i; i < short.length; i++) {
-            short[i] = popSig[i];
+            short[i] = lastSig[i];
         }
-        assertFalse(harness.verify(pubkeyA, popSlot, message, short));
+        assertFalse(harness.verify(pubkeyA, lastSlot, message, short));
     }
 }

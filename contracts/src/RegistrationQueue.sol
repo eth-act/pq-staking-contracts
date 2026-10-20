@@ -11,11 +11,13 @@ import {SystemRequestQueue} from "./SystemRequestQueue.sol";
 ///      stake's authorization commitment, and that the key is unused. A rejected registration
 ///      does not lose the stake.
 ///
-///      Proof of possession: signature at the reserved slot `POP_SLOT` (never used for
-///      attestations, since XMSS leaves are one-time keys) over
-///        keccak256(POP_DOMAIN ‖ chain_id (32) ‖ this contract (20) ‖ stake_id (8) ‖ pq_pubkey (32)).
-///      The contract address binds the role, so a validator registration cannot be replayed
-///      into the builder contract or the reverse.
+///      Proof of possession: signature over
+///        M = keccak256(POP_DOMAIN ‖ chain_id (32) ‖ this contract (20) ‖ stake_id (8) ‖ pq_pubkey (32))
+///      at slot `POP_SLOT_BASE | (M mod 2^16)`. Slots under top leaf 0xFFFF are reserved for
+///      proofs of possession and never sign attestations. XMSS leaves are one-time keys, so the
+///      leaf is derived from M: each distinct registration (chain, role, stake) of a key signs
+///      with its own leaf (issue #2). The contract address binds the role, so a validator
+///      registration cannot be replayed into the builder contract or the reverse.
 ///
 ///      Request calldata (exactly 2440 bytes):
 ///        stake_id (u64 BE) ++ pq_pubkey (32) ++ pq_signature (2400)
@@ -33,7 +35,8 @@ abstract contract RegistrationQueue is SystemRequestQueue {
     /// @dev stake_id (8) + pq_pubkey + pq_signature.
     uint256 internal constant REQUEST_LENGTH = 8 + PQ_PUBKEY_LENGTH + PQ_SIGNATURE_LENGTH;
 
-    uint32 internal constant POP_SLOT = type(uint32).max;
+    /// @dev First slot of the PoP range (top leaf 0xFFFF); the bottom leaf comes from M.
+    uint32 internal constant POP_SLOT_BASE = 0xffff0000;
     bytes32 internal constant POP_DOMAIN =
         keccak256("leanXMSS-K registration proof of possession v1");
 
@@ -48,7 +51,8 @@ abstract contract RegistrationQueue is SystemRequestQueue {
         bytes32 pubkey = bytes32(input[8:40]);
         bytes32 message =
             keccak256(abi.encodePacked(POP_DOMAIN, block.chainid, address(this), stakeId, pubkey));
-        if (!LeanXmssK.verify(pubkey, POP_SLOT, message, input[40:])) revert();
+        uint32 slot = POP_SLOT_BASE | uint32(uint16(uint256(message)));
+        if (!LeanXmssK.verify(pubkey, slot, message, input[40:])) revert();
 
         queue[index] = input;
         _log0(input);

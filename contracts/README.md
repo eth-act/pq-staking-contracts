@@ -15,10 +15,12 @@ in the registration contract for their role. Registration carries one post-quant
 (32 bytes) and a proof of possession (2400-byte leanXMSS-K signature); there is no BLS key.
 
 The registration contract verifies the proof of possession (`LeanXmssK`, about 66k gas), so an
-invalid one reverts and never reaches the consensus layer. The proof signs, at the reserved
-slot `2³² − 1`,
-`keccak256(DOMAIN ‖ chain_id ‖ registration_contract ‖ stake_id ‖ pq_pubkey)`, which binds it
-to one stake, one chain and one role. The consensus layer still checks that the stake exists
+invalid one reverts and never reaches the consensus layer. The proof signs
+`M = keccak256(DOMAIN ‖ chain_id ‖ registration_contract ‖ stake_id ‖ pq_pubkey)`, which binds it
+to one stake, one chain and one role, at slot `0xFFFF0000 | (M mod 2¹⁶)`. Slots
+`0xFFFF0000`–`0xFFFFFFFF` are reserved for proofs of possession. XMSS leaves are one-time keys,
+so deriving the leaf from `M` gives each registration of a key its own leaf (issue #2).
+The consensus layer still checks that the stake exists
 and is unregistered, that the key opens the stake's authorization commitment, and that the key
 is unused. leanXMSS-K is a Keccak instance of leanXMSS defined in this repository; its spec and
 reference implementation are in [`xmss/`](../xmss/).
@@ -51,12 +53,16 @@ bytecode's behavior. Each call is dispatched as in EIP-7002:
   per-block maximum in FIFO order and returns them as raw bytes (the EIP-7685 request data).
   It also sets `excess = max(0, excess + count - target)` and resets `count`.
 - **Fee getter.** Empty calldata and no value returns the current fee as a 32-byte big-endian
-  word: `fake_exponential(1, excess, 17)` wei.
+  word: `fake_exponential(1, excess, 17)` wei. From `excess = 2893` the formula overflows
+  uint256; the fee getter and requests then revert without data (the fee is already above
+  10⁵⁵ ETH there).
 - **Request.** Any other calldata is a request (formats below). It must pay at least the fee.
   The contract keeps the fee and does not refund overpayment. The request is stored in the
   queue and logged with `log0` (no topics).
-- **Storage.** Slots 0-3 hold `excess`, `count`, queue head and queue tail, as in EIP-7002;
-  entries start at slot 4.
+- **Storage.** Slots 0-3 hold `excess`, `count`, queue head and queue tail, as in EIP-7002.
+  Entries differ from EIP-7002's contiguous slots: slot 4 is the root of an `index → request`
+  mapping, so entry `i` is at `keccak256(i ‖ 4)`. Clients read requests from the system call,
+  never from storage.
 - **Inhibitor.** Deployment sets `excess = 2**256 - 1`, which rejects requests and fee
   queries until the first system call.
 
@@ -106,11 +112,17 @@ values, so the export script rejects them.
 `0` for a fresh chain). Deploying from `PQStaking.bin` requires appending the ABI-encoded
 `uint64`. When embedding `PQStaking.bin-runtime` in genesis with `N > 0`, set storage slot
 `0` to `(N << 64) | N` (`initialEventCount` in the low 8 bytes, `eventCount` in the next 8).
+The constructor's checks don't run for a genesis `alloc`, so the genesis value must satisfy
+them itself: `N < 2⁴⁰` (otherwise every stake and top-up reverts) and `eventCount ≥ N`
+(otherwise new stake IDs collide with migrated validator indices).
 
 The system contracts' constructors set storage slot `0` (`excess`) to `2**256 - 1`, the
 inhibitor. When embedding their `.bin-runtime` in genesis, either set slot `0` to
 `0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` to keep requests
 disabled until the first system call, or leave it unset to accept requests from genesis.
+Leave slots 1-3 (`count`, head, tail) zero: a genesis with `head > tail`, or with
+`excess + count ≥ 2²⁵⁶` while not inhibited, makes the end-of-block system call revert, which
+invalidates every block.
 
 ### Reproducing a release
 

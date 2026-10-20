@@ -21,7 +21,7 @@ SIGNATURE_LENGTH = 2 * LAYER_SIG_LENGTH  # 2400
 CHAIN, LEAF, NODE, MESSAGE, SECRET = 0, 1, 2, 3, 4
 TOP, BOTTOM = 0, 1
 
-POP_SLOT = (1 << 32) - 1
+POP_TOP_LEAF = 0xFFFF  # PoP range: slots 0xFFFF0000..0xFFFFFFFF, never used for attestations
 
 
 def K(data: bytes) -> bytes:
@@ -39,6 +39,11 @@ def pop_message(chain_id: int, registration_contract: bytes, stake_id: int, pubk
     """Message signed by the registration proof of possession."""
     assert len(registration_contract) == 20 and len(pubkey) == 32
     return K(POP_DOMAIN + chain_id.to_bytes(32, "big") + registration_contract + stake_id.to_bytes(8, "big") + pubkey)
+
+
+def pop_slot(message: bytes) -> int:
+    """Slot whose leaf signs a PoP for `message`: top leaf 0xFFFF, bottom leaf = last 2 bytes."""
+    return (POP_TOP_LEAF << 16) | int.from_bytes(message[-2:], "big")
 
 
 def digits(d: bytes) -> list[int]:
