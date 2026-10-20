@@ -35,6 +35,7 @@ contract PQStaking {
     event TopUp(uint64 indexed stakeId, uint64 amountGwei, uint64 eventIndex);
 
     error DepositTooSmall();
+    error DepositTooLarge();
     error NotGweiMultiple();
     error EventTreeFull();
     error UnknownStake(uint64 stakeId);
@@ -85,6 +86,9 @@ contract PQStaking {
     function _amountGwei() private view returns (uint64) {
         if (msg.value < MIN_DEPOSIT) revert DepositTooSmall();
         if (msg.value % 1 gwei != 0) revert NotGweiMultiple();
-        return uint64(msg.value / 1 gwei);
+        uint256 amountGwei = msg.value / 1 gwei;
+        // Events carry uint64 gwei; never truncate (issue #3).
+        if (amountGwei > type(uint64).max) revert DepositTooLarge();
+        return uint64(amountGwei);
     }
 }

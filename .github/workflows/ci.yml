@@ -21,6 +21,8 @@ jobs:
           submodules: recursive
 
       - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
 
       - name: Format
         run: forge fmt --check
@@ -52,6 +54,8 @@ jobs:
 
       # `npm run build` exports the contract bytecode first, so it needs forge.
       - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
 
       - uses: actions/setup-node@v4
         with:

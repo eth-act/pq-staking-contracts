@@ -11,14 +11,25 @@ pragma solidity 0.8.30;
 ///      - empty calldata, no value: return the current fee as a 32-byte big-endian word.
 ///      - anything else: a request, validated and stored by `_addRequest`. It must pay at least
 ///        the current fee; the fee is kept and overpayment is not refunded.
-///      Storage slots 0-3 match EIP-7002 (excess, count, queue head, queue tail); derived
-///      contracts store queue entries from slot 4. Deployment sets `excess` to
-///      `EXCESS_INHIBITOR`, which blocks requests until the first system call.
+///      Storage slots 0-3 match EIP-7002 (excess, count, queue head, queue tail). Queue entries
+///      differ from EIP-7002's contiguous slots: derived contracts declare an
+///      `index => request` mapping at slot 4, so entry `i` lives at `keccak256(i ‖ 4)` (issue #6).
+///      Clients never read entries directly; they come out through the system call.
+///      Deployment sets `excess` to `EXCESS_INHIBITOR`, which blocks requests until the first
+///      system call.
+///
+///      Genesis embedding must keep `queueHead <= queueTail` and, when not inhibited,
+///      `excess + count < 2^256`; otherwise the end-of-block system call reverts and every block
+///      is invalid. A fresh deployment or slot 0 = inhibitor with slots 1-3 zero satisfies this.
 abstract contract SystemRequestQueue {
     address internal constant SYSTEM_ADDRESS = 0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE;
     uint256 internal constant EXCESS_INHIBITOR = type(uint256).max;
     uint256 internal constant MIN_REQUEST_FEE = 1;
     uint256 internal constant REQUEST_FEE_UPDATE_FRACTION = 17;
+
+    /// @dev fake_exponential(1, excess, 17) overflows uint256 for every excess >= this value.
+    ///      The fee there exceeds 1e55 ETH, so requests are effectively impossible already.
+    uint256 internal constant FEE_OVERFLOW_EXCESS = 2893;
 
     /// @dev Stake IDs are 40-bit values; larger IDs would be truncated on the consensus layer.
     uint64 internal constant MAX_STAKE_ID = 2 ** 40 - 1;
@@ -42,6 +53,8 @@ abstract contract SystemRequestQueue {
         }
 
         if (msg.value < fee) revert();
+        // State is written before `_addRequest` validates the input; a rejected request relies
+        // on its revert to roll these writes back. Keep this whole path in one call frame.
         count += 1;
         uint256 index = queueTail;
         queueTail = index + 1;
@@ -52,6 +65,8 @@ abstract contract SystemRequestQueue {
     function _getFee() private view returns (uint256) {
         uint256 currentExcess = excess;
         if (currentExcess == EXCESS_INHIBITOR) revert();
+        // Revert without data instead of reaching a checked-arithmetic Panic (issue #5).
+        if (currentExcess >= FEE_OVERFLOW_EXCESS) revert();
         return _fakeExponential(MIN_REQUEST_FEE, currentExcess, REQUEST_FEE_UPDATE_FRACTION);
     }
 
@@ -78,7 +93,7 @@ abstract contract SystemRequestQueue {
     }
 
     /// @dev Approximates `factor * e ** (numerator / denominator)`, as in EIP-4844 / EIP-7002.
-    ///      Reverts on overflow, i.e. once the fee is far beyond any payable amount.
+    ///      Callers bound `numerator` below `FEE_OVERFLOW_EXCESS`, so the loop never overflows.
     function _fakeExponential(uint256 factor, uint256 numerator, uint256 denominator)
         private
         pure
@@ -123,11 +138,6 @@ abstract contract SystemRequestQueue {
         v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
         v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
         return bytes8((v >> 32) | (v << 32));
-    }
-
-    function _le32(uint32 v) internal pure returns (bytes4) {
-        v = ((v & 0xFF00FF00) >> 8) | ((v & 0x00FF00FF) << 8);
-        return bytes4((v >> 16) | (v << 16));
     }
 
     /// @dev Copy `len` bytes of `src` from `srcOffset` into `dst` at `dstOffset`; returns the

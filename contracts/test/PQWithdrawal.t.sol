@@ -127,6 +127,23 @@ contract PQWithdrawalTest is SystemCallTest {
         assertFalse(ok);
     }
 
+    /// Issue #5: at the fee-overflow boundary the fee getter and requests revert without data.
+    function test_FeeOverflowBoundaryRevertsWithoutData() public {
+        vm.store(withdrawals, bytes32(0), bytes32(uint256(2892)));
+        uint256 fee = feeOf(withdrawals);
+        assertGt(fee, 1e70);
+
+        vm.store(withdrawals, bytes32(0), bytes32(uint256(2893)));
+        (bool ok, bytes memory data) = withdrawals.call("");
+        assertFalse(ok);
+        assertEq(data.length, 0);
+
+        vm.deal(address(this), type(uint256).max);
+        (ok, data) = withdrawals.call{value: type(uint256).max}(input(1, 0));
+        assertFalse(ok);
+        assertEq(data.length, 0);
+    }
+
     function test_RevertWhen_CalldataNot16Bytes() public {
         (bool ok,) = withdrawals.call{value: 1}(new bytes(15));
         assertFalse(ok);

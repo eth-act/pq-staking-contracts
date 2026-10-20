@@ -13,7 +13,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 dist="${1:-dist}"
 
-forge build --skip test --skip script >&2
+# Build into a fresh output and cache directory, so artifacts of deleted or moved sources in a
+# reused out/ can never be exported (issue #4).
+build=$(mktemp -d)
+trap 'rm -rf "$build"' EXIT
+forge build --skip test --skip script --force --out "$build/out" --cache-path "$build/cache" >&2
 
 rm -rf "$dist"
 mkdir -p "$dist"
@@ -48,6 +52,12 @@ while IFS= read -r -d '' artifact; do
     exit 1
   fi
 
+  # Two contracts with the same name in different files would overwrite each other's output.
+  if [[ -e "$dist/$name.bin" ]]; then
+    echo "error: two contracts named $name in src/; cannot export both" >&2
+    exit 1
+  fi
+
   printf '%s' "$bytecode" >"$dist/$name.bin"
   printf '%s' "$runtime" >"$dist/$name.bin-runtime"
   jq '.abi' "$artifact" >"$dist/$name.abi.json"
@@ -75,7 +85,7 @@ while IFS= read -r -d '' artifact; do
 
   count=$((count + 1))
   echo "exported $name ($source)" >&2
-done < <(find out -name '*.json' -not -path 'out/build-info/*' -print0 | sort -z)
+done < <(find "$build/out" -name '*.json' -not -path "$build/out/build-info/*" -print0 | sort -z)
 
 if [[ "$count" -eq 0 ]]; then
   echo "error: no deployable contracts found in src/" >&2

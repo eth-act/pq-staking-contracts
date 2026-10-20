@@ -76,6 +76,21 @@ contract PQStakingTest is Test {
         staking.stake{value: 1 ether + 1}(CREDS, AUTH);
     }
 
+    /// Issue #3: amounts are emitted as uint64 gwei and must never wrap.
+    function test_AmountBoundaryAtUint64Gwei() public {
+        uint256 max = uint256(type(uint64).max) * 1 gwei;
+        vm.deal(address(this), 3 * max);
+
+        vm.expectEmit(address(staking));
+        emit PQStaking.CreateStake(MIGRATED, CREDS, AUTH, type(uint64).max);
+        uint64 stakeId = staking.stake{value: max}(CREDS, AUTH);
+
+        vm.expectRevert(PQStaking.DepositTooLarge.selector);
+        staking.stake{value: max + 1 gwei}(CREDS, AUTH);
+        vm.expectRevert(PQStaking.DepositTooLarge.selector);
+        staking.topup{value: max + 1 gwei}(stakeId);
+    }
+
     function test_RevertWhen_TopUpBelowMinimum() public {
         vm.expectRevert(PQStaking.DepositTooSmall.selector);
         staking.topup{value: 1 ether - 1 gwei}(0);

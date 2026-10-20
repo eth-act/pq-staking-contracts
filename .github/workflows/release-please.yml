@@ -38,6 +38,8 @@ jobs:
           submodules: recursive
 
       - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
 
       - name: Test
         run: forge test
